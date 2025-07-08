@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """GPX Route Timer - Add timestamps to GPX files for multi-day hikes"""
 
+__version__ = "0.1.0"
 
 import sys
 import subprocess
