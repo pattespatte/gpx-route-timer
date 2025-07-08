@@ -23,12 +23,22 @@ pip install -e .
 
 ## Usage
 
+After installation, the `gpx-route-timer` command should be available in your terminal:
+
 ```bash
-python gpx_route_timer.py [GPX_FILE_OR_URL] [options]
+gpx-route-timer [GPX_FILE_OR_URL] [options]
 ```
 
 ## Example
 
+To run the tool with the example GPX file:
+
 ```bash
-python src/gpx_route_timer/main.py example.gpx
+gpx-route-timer example.gpx
+```
+
+Alternatively, to use the example GPX file directly from the repository:
+
+```bash
+gpx-route-timer https://github.com/pattespatte/gpx-route-timer/raw/main/misc/example.gpx
 ```
