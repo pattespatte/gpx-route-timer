@@ -18,7 +18,7 @@ A Python tool to plan multi-day hikes by adding timestamps to GPX files.
 git clone https://github.com/pattespatte/gpx-route-timer
 cd gpx-route-timer
 # Direct invocation (without installation): If you do not prefer not to install the package, then just run:
-python src/gpx-route-timer/__init__.py [GPX_FILE_OR_URL] [options]
+python src/gpx_route_timer/__init__.py [GPX_FILE_OR_URL] [options]
 ```
 
 ### Alternatively, you can install the package using pip
