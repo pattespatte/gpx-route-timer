@@ -59,7 +59,7 @@ After installation, use the `gpx-route-timer` command:
 ```bash
 gpx-route-timer [GPX_FILE_OR_URL] [options]
 # Process a local GPX file:
-gpx-route-timer /misc/example.gpx
+gpx-route-timer misc/example.gpx
 # Process a GPX file from a URL:
 gpx-route-timer https://github.com/pattespatte/gpx-route-timer/raw/main/misc/example.gpx
 ```
