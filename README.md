@@ -12,40 +12,54 @@ A Python tool to plan multi-day hikes by adding timestamps to GPX files.
 - Validate route for realistic daily distances
 - Download or load a GPX file from a URL or local path
 
+## Requirements
+
+- Python 3.8 or higher
+- pip
+
 ## Installation
 
+### Option 1: Using a Virtual Environment (Recommended)
+
 ```bash
+# Clone the repository
 git clone https://github.com/pattespatte/gpx-route-timer
 cd gpx-route-timer
-# Direct invocation (without installation): If you do not prefer not to install the package, then just run:
-python src/gpx_route_timer/__init__.py [GPX_FILE_OR_URL] [options]
-```
 
-### Alternatively, you can install the package using pip
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-```bash
+# Install the package
 pip install -r requirements.txt
 pip install -e .
 ```
 
+## Option 2: Direct Usage (No Installation)
+
+```bash
+# Clone the repository
+
+git clone https://github.com/pattespatte/gpx-route-timer
+cd gpx-route-timer
+
+# Install dependencies
+
+pip install -r requirements.txt
+
+# Run directly
+
+python src/gpx_route_timer/__init__.py [GPX_FILE_OR_URL] [options]
+```
+
 ## Usage
 
-After installing the package, the `gpx-route-timer` command should be available in your terminal:
+After installation, use the `gpx-route-timer` command:
 
 ```bash
 gpx-route-timer [GPX_FILE_OR_URL] [options]
-```
-
-## Example
-
-To run the tool with the example GPX file:
-
-```bash
-gpx-route-timer example.gpx
-```
-
-Alternatively, to use the example GPX file directly from the repository:
-
-```bash
+# Process a local GPX file:
+gpx-route-timer /misc/example.gpx
+# Process a GPX file from a URL:
 gpx-route-timer https://github.com/pattespatte/gpx-route-timer/raw/main/misc/example.gpx
 ```
