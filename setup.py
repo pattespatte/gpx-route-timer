@@ -28,7 +28,7 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "gpx-route-timer=gpx_route_timer.main:main",
+            "gpx-route-timer=gpx-route-timer.main:main",
         ],
     },
 )

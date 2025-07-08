@@ -37,5 +37,8 @@ Thumbs.db
 
 # Generated files
 *.gpx
+# Exclude specific file from being ignored
+!misc/example.gpx
 *.md
+# Exclude specific file from being ignored
 !README.md
