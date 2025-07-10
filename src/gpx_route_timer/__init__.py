@@ -20,6 +20,7 @@ Features:
   - Calculate total route distance and suggest overnight stops.
   - Output a GPX file with timestamps.
   - Generate a Markdown itinerary with daily breakdowns and map links.
+  - Generate a KML file for Google Earth visualization.
   - Detect existing overnight stops based on time gaps in the GPX.
   - Interactively set or adjust start/end times and overnight locations.
   - Validate route for realistic daily distances.
