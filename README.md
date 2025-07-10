@@ -1,16 +1,20 @@
 # GPX Route Timer
 
-A Python tool to plan multi-day hikes by adding timestamps to GPX files.
+Add timestamps to GPX files for multi-day hikes with automatic overnight stop detection and itinerary generation.
 
 ## Features
 
-- Calculate total route distance and suggest overnight stops
-- Output a GPX file with timestamps
-- Generate a Markdown itinerary with daily breakdowns and map links
-- Detect existing overnight stops based on time gaps in the GPX
-- Interactively set or adjust start/end times and overnight locations
-- Validate route for realistic daily distances
-- Download or load a GPX file from a URL or local path
+- **Multi-day route planning**: Automatically calculate overnight stops for multi-day hikes
+- **Timestamp generation**: Add realistic timestamps to GPX files for services like Komoot
+- **Existing stop detection**: Detect and preserve existing overnight stops from GPX timestamps
+- **Interactive customization**: Adjust start/end times and overnight locations
+- **Multiple output formats**:
+  - GPX files with timestamps
+  - Markdown itineraries with daily breakdowns
+  - **KML files for Google Earth visualization**
+- **Map integration**: Generate Google Maps links for all waypoints and route overview
+- **Route validation**: Check for realistic daily distances and hiking times
+- **Flexible input**: Support for both local files and URLs
 
 ## Requirements
 

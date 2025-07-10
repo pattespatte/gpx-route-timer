@@ -130,6 +130,34 @@ def format_map_link(lat, lon):
     return f"https://www.google.com/maps?q={lat},{lon}"
 
 
+def format_route_link(all_points, sleep_stops):
+    """Create a Google Maps route link for the entire route with waypoints"""
+    # Start point
+    start_lat, start_lon = all_points[0]["coords"]
+    waypoints = [f"{start_lat},{start_lon}"]
+
+    # Add sleep stops as waypoints
+    for stop in sleep_stops:
+        lat, lon = stop["point"]["coords"]
+        waypoints.append(f"{lat},{lon}")
+
+    # End point
+    end_lat, end_lon = all_points[-1]["coords"]
+    waypoints.append(f"{end_lat},{end_lon}")
+
+    # Google Maps directions URL format
+    # First waypoint is origin, last is destination, middle ones are waypoints
+    if len(waypoints) == 2:
+        # No intermediate waypoints
+        return f"https://www.google.com/maps/dir/{waypoints[0]}/{waypoints[1]}"
+    else:
+        # With intermediate waypoints
+        origin = waypoints[0]
+        destination = waypoints[-1]
+        intermediate = "/".join(waypoints[1:-1])
+        return f"https://www.google.com/maps/dir/{origin}/{intermediate}/{destination}"
+
+
 def find_closest_point(points, target_distance):
     """Find the point closest to a target cumulative distance"""
     closest_point = None
@@ -518,12 +546,121 @@ def save_markdown_itinerary(
     md_content.append(
         f"- [End Point]({format_map_link(all_points[-1]['coords'][0], all_points[-1]['coords'][1])})"
     )
+    md_content.append(
+        f"- [Entire route on Google Maps]({format_route_link(all_points, sleep_stops)})"
+    )
+
+    md_content.append(f"\n## 3D Visualization\n")
+    md_content.append(f"To view this route in 3D:")
+    md_content.append(f"- **Google Earth Web**: Go to [earth.google.com](https://earth.google.com/web/), click the menu (☰), select 'Projects' → 'Import KML file', and upload the `.kml` file")
+    md_content.append(f"- **Google Earth Desktop**: Double-click the `.kml` file (requires Google Earth to be installed)")
+    md_content.append(f"- **Mobile**: Import the `.kml` file through the Google Earth mobile app")
 
     # Write to file
     with open(filename, "w", encoding="utf-8") as f:
         f.write("\n".join(md_content))
 
     print(f"Markdown itinerary saved as '{filename}'")
+
+
+def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end_time):
+    """Save the route as a KML file"""
+    kml_content = []
+    kml_content.append('<?xml version="1.0" encoding="UTF-8"?>')
+    kml_content.append('<kml xmlns="http://www.opengis.net/kml/2.2">')
+    kml_content.append('  <Document>')
+    kml_content.append(f'    <name>{route_name}</name>')
+    kml_content.append(f'    <description>Hiking route from {start_time.strftime("%Y-%m-%d")} to {end_time.strftime("%Y-%m-%d")}</description>')
+
+    # Add styles
+    kml_content.append('    <Style id="routeStyle">')
+    kml_content.append('      <LineStyle>')
+    kml_content.append('        <color>ff0000ff</color>')  # Red line
+    kml_content.append('        <width>3</width>')
+    kml_content.append('      </LineStyle>')
+    kml_content.append('    </Style>')
+
+    kml_content.append('    <Style id="startStyle">')
+    kml_content.append('      <IconStyle>')
+    kml_content.append('        <color>ff00ff00</color>')  # Green
+    kml_content.append('        <scale>1.2</scale>')
+    kml_content.append('      </IconStyle>')
+    kml_content.append('    </Style>')
+
+    kml_content.append('    <Style id="sleepStyle">')
+    kml_content.append('      <IconStyle>')
+    kml_content.append('        <color>ff0000ff</color>')  # Red
+    kml_content.append('        <scale>1.1</scale>')
+    kml_content.append('      </IconStyle>')
+    kml_content.append('    </Style>')
+
+    kml_content.append('    <Style id="endStyle">')
+    kml_content.append('      <IconStyle>')
+    kml_content.append('        <color>ffff0000</color>')  # Blue
+    kml_content.append('        <scale>1.2</scale>')
+    kml_content.append('      </IconStyle>')
+    kml_content.append('    </Style>')
+
+    # Add route line
+    kml_content.append('    <Placemark>')
+    kml_content.append(f'      <name>{route_name} - Track</name>')
+    kml_content.append('      <styleUrl>#routeStyle</styleUrl>')
+    kml_content.append('      <LineString>')
+    kml_content.append('        <tessellate>1</tessellate>')
+    kml_content.append('        <coordinates>')
+
+    # Add all track points
+    for point in all_points:
+        lat, lon = point["coords"]
+        # KML uses lon,lat,elevation format
+        kml_content.append(f'          {lon},{lat},0')
+
+    kml_content.append('        </coordinates>')
+    kml_content.append('      </LineString>')
+    kml_content.append('    </Placemark>')
+
+    # Add start point
+    start_lat, start_lon = all_points[0]["coords"]
+    kml_content.append('    <Placemark>')
+    kml_content.append('      <name>Start</name>')
+    kml_content.append(f'      <description>Start of hike: {start_time.strftime("%Y-%m-%d %H:%M")}</description>')
+    kml_content.append('      <styleUrl>#startStyle</styleUrl>')
+    kml_content.append('      <Point>')
+    kml_content.append(f'        <coordinates>{start_lon},{start_lat},0</coordinates>')
+    kml_content.append('      </Point>')
+    kml_content.append('    </Placemark>')
+
+    # Add sleep stops
+    for i, stop in enumerate(sleep_stops):
+        lat, lon = stop["point"]["coords"]
+        kml_content.append('    <Placemark>')
+        kml_content.append(f'      <name>Night {i+1} Camp</name>')
+        kml_content.append(f'      <description>Overnight stop {i+1}<br/>Distance: {stop["point"]["cumulative_distance"]:.2f} km</description>')
+        kml_content.append('      <styleUrl>#sleepStyle</styleUrl>')
+        kml_content.append('      <Point>')
+        kml_content.append(f'        <coordinates>{lon},{lat},0</coordinates>')
+        kml_content.append('      </Point>')
+        kml_content.append('    </Placemark>')
+
+    # Add end point
+    end_lat, end_lon = all_points[-1]["coords"]
+    kml_content.append('    <Placemark>')
+    kml_content.append('      <name>Finish</name>')
+    kml_content.append(f'      <description>End of hike: {end_time.strftime("%Y-%m-%d %H:%M")}</description>')
+    kml_content.append('      <styleUrl>#endStyle</styleUrl>')
+    kml_content.append('      <Point>')
+    kml_content.append(f'        <coordinates>{end_lon},{end_lat},0</coordinates>')
+    kml_content.append('      </Point>')
+    kml_content.append('    </Placemark>')
+
+    kml_content.append('  </Document>')
+    kml_content.append('</kml>')
+
+    # Write to file
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("\n".join(kml_content))
+
+    print(f"KML file saved as '{filename}'")
 
 
 def main():
@@ -979,10 +1116,22 @@ def main():
         all_points,
     )
 
+    # Save KML file
+    kml_filename = os.path.splitext(output_file)[0] + ".kml"
+    save_kml_file(
+        kml_filename,
+        all_points,
+        sleep_stops,
+        route_name,
+        start_time,
+        end_time,
+    )
+
+    # Update the final print statement:
     print(f"\nFiles created:")
     print(f"- GPX file: {output_file}")
     print(f"- Markdown itinerary: {md_filename}")
-
+    print(f"- KML file: {kml_filename}")
 
 if __name__ == "__main__":
     main()
