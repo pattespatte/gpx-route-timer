@@ -82,7 +82,7 @@ def try_install_package(package):
 
 def check_and_install_dependencies():
     """Check for required packages and try to install if missing"""
-    required = {"requests": "requests", "geopy": "geopy"}
+    required = {"requests": "requests", "geopy": "geopy", "numpy": "numpy"}
 
     missing = []
     for module, package in required.items():
@@ -116,6 +116,7 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from geopy.distance import geodesic
+import numpy as np
 import os
 from urllib.parse import quote, urlparse
 
@@ -184,25 +185,100 @@ def safe_geodesic(point1, point2):
         return ((lat_diff**2 + lon_diff**2) ** 0.5) * 111  # Rough km conversion
 
 
+def calculate_distances_vectorized(points):
+    """Calculate distances using vectorized operations with numpy"""
+    if len(points) < 2:
+        return np.array([0.0])
+
+    # Extract coordinates as numpy array
+    coords = np.array([point["coords"] for point in points])
+
+    # Calculate differences between consecutive points
+    lat_diff = np.diff(coords[:, 0])
+    lon_diff = np.diff(coords[:, 1])
+
+    # More accurate distance calculation using Haversine-like approximation
+    # Convert to radians
+    lat_rad = np.radians(coords[:-1, 0])
+    lat_diff_rad = np.radians(lat_diff)
+    lon_diff_rad = np.radians(lon_diff)
+
+    # Haversine formula approximation
+    # For small distances, this is quite accurate
+    a = (
+        np.sin(lat_diff_rad / 2) ** 2
+        + np.cos(lat_rad)
+        * np.cos(lat_rad + lat_diff_rad)
+        * np.sin(lon_diff_rad / 2) ** 2
+    )
+    distances = 2 * 6371 * np.arcsin(np.sqrt(a))  # Earth radius = 6371 km
+
+    # Return cumulative distances
+    return np.concatenate(([0], np.cumsum(distances)))
+
+
+def calculate_distances_fallback(points):
+    """Fallback distance calculation using geopy for accuracy"""
+    distances = [0.0]
+    total_distance = 0.0
+
+    for i in range(1, len(points)):
+        dist = safe_geodesic(points[i - 1]["coords"], points[i]["coords"])
+        total_distance += dist
+        distances.append(total_distance)
+
+    return np.array(distances)
+
+
 def calculate_cumulative_distances(all_points):
-    """Calculate cumulative distances with progress indicator"""
-    total_distance = 0
+    """Calculate cumulative distances with vectorized operations when possible"""
     num_points = len(all_points)
 
     print("\nCalculating route distance...")
-    for i in range(num_points):
-        if i > 0:
-            dist = safe_geodesic(all_points[i - 1]["coords"], all_points[i]["coords"])
-            total_distance += dist
-        all_points[i]["cumulative_distance"] = total_distance
 
-        # Show progress for large files
-        if num_points > 1000 and i % 100 == 0:
-            progress = (i / num_points) * 100
-            print(f"\rProgress: {progress:.1f}% ({i}/{num_points} points)", end="")
+    # For small files or when high accuracy is needed, use geopy
+    # For large files, use vectorized calculation for speed
+    use_vectorized = num_points > 1000
 
-    if num_points > 1000:
-        print(f"\rProgress: 100.0% ({num_points}/{num_points} points) - Done!")
+    try:
+        if use_vectorized:
+            print("Using fast vectorized calculation for large GPX file...")
+            distances = calculate_distances_vectorized(all_points)
+        else:
+            print("Using high-accuracy calculation...")
+            distances = calculate_distances_fallback(all_points)
+
+        # Assign distances to points
+        for i, point in enumerate(all_points):
+            point["cumulative_distance"] = distances[i]
+
+        total_distance = distances[-1]
+
+        if use_vectorized:
+            print(f"Fast calculation completed for {num_points} points")
+        else:
+            print(f"High-accuracy calculation completed for {num_points} points")
+
+    except Exception as e:
+        print(f"Error in vectorized calculation, falling back to point-by-point: {e}")
+        # Fallback to original method
+        total_distance = 0
+
+        for i in range(num_points):
+            if i > 0:
+                dist = safe_geodesic(
+                    all_points[i - 1]["coords"], all_points[i]["coords"]
+                )
+                total_distance += dist
+            all_points[i]["cumulative_distance"] = total_distance
+
+            # Show progress for large files
+            if num_points > 1000 and i % 100 == 0:
+                progress = (i / num_points) * 100
+                print(f"\rProgress: {progress:.1f}% ({i}/{num_points} points)", end="")
+
+        if num_points > 1000:
+            print(f"\rProgress: 100.0% ({num_points}/{num_points} points) - Done!")
 
     return total_distance
 
@@ -553,9 +629,15 @@ def save_markdown_itinerary(
 
     md_content.append(f"\n## 3D Visualization\n")
     md_content.append(f"To view this route in 3D:")
-    md_content.append(f"- **Google Earth Web**: Go to [earth.google.com](https://earth.google.com/web/), click the menu (☰), select 'Projects' → 'Import KML file', and upload the `.kml` file")
-    md_content.append(f"- **Google Earth Desktop**: Double-click the `.kml` file (requires Google Earth to be installed)")
-    md_content.append(f"- **Mobile**: Import the `.kml` file through the Google Earth mobile app")
+    md_content.append(
+        f"- **Google Earth Web**: Go to [earth.google.com](https://earth.google.com/web/), click the menu (☰), select 'Projects' → 'Import KML file', and upload the `.kml` file"
+    )
+    md_content.append(
+        f"- **Google Earth Desktop**: Double-click the `.kml` file (requires Google Earth to be installed)"
+    )
+    md_content.append(
+        f"- **Mobile**: Import the `.kml` file through the Google Earth mobile app"
+    )
 
     # Write to file
     with open(filename, "w", encoding="utf-8") as f:
@@ -569,93 +651,101 @@ def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end
     kml_content = []
     kml_content.append('<?xml version="1.0" encoding="UTF-8"?>')
     kml_content.append('<kml xmlns="http://www.opengis.net/kml/2.2">')
-    kml_content.append('  <Document>')
-    kml_content.append(f'    <name>{route_name}</name>')
-    kml_content.append(f'    <description>Hiking route from {start_time.strftime("%Y-%m-%d")} to {end_time.strftime("%Y-%m-%d")}</description>')
+    kml_content.append("  <Document>")
+    kml_content.append(f"    <name>{route_name}</name>")
+    kml_content.append(
+        f'    <description>Hiking route from {start_time.strftime("%Y-%m-%d")} to {end_time.strftime("%Y-%m-%d")}</description>'
+    )
 
     # Add styles
     kml_content.append('    <Style id="routeStyle">')
-    kml_content.append('      <LineStyle>')
-    kml_content.append('        <color>ff0000ff</color>')  # Red line
-    kml_content.append('        <width>3</width>')
-    kml_content.append('      </LineStyle>')
-    kml_content.append('    </Style>')
+    kml_content.append("      <LineStyle>")
+    kml_content.append("        <color>ff0000ff</color>")  # Red line
+    kml_content.append("        <width>3</width>")
+    kml_content.append("      </LineStyle>")
+    kml_content.append("    </Style>")
 
     kml_content.append('    <Style id="startStyle">')
-    kml_content.append('      <IconStyle>')
-    kml_content.append('        <color>ff00ff00</color>')  # Green
-    kml_content.append('        <scale>1.2</scale>')
-    kml_content.append('      </IconStyle>')
-    kml_content.append('    </Style>')
+    kml_content.append("      <IconStyle>")
+    kml_content.append("        <color>ff00ff00</color>")  # Green
+    kml_content.append("        <scale>1.2</scale>")
+    kml_content.append("      </IconStyle>")
+    kml_content.append("    </Style>")
 
     kml_content.append('    <Style id="sleepStyle">')
-    kml_content.append('      <IconStyle>')
-    kml_content.append('        <color>ff0000ff</color>')  # Red
-    kml_content.append('        <scale>1.1</scale>')
-    kml_content.append('      </IconStyle>')
-    kml_content.append('    </Style>')
+    kml_content.append("      <IconStyle>")
+    kml_content.append("        <color>ff0000ff</color>")  # Red
+    kml_content.append("        <scale>1.1</scale>")
+    kml_content.append("      </IconStyle>")
+    kml_content.append("    </Style>")
 
     kml_content.append('    <Style id="endStyle">')
-    kml_content.append('      <IconStyle>')
-    kml_content.append('        <color>ffff0000</color>')  # Blue
-    kml_content.append('        <scale>1.2</scale>')
-    kml_content.append('      </IconStyle>')
-    kml_content.append('    </Style>')
+    kml_content.append("      <IconStyle>")
+    kml_content.append("        <color>ffff0000</color>")  # Blue
+    kml_content.append("        <scale>1.2</scale>")
+    kml_content.append("      </IconStyle>")
+    kml_content.append("    </Style>")
 
     # Add route line
-    kml_content.append('    <Placemark>')
-    kml_content.append(f'      <name>{route_name} - Track</name>')
-    kml_content.append('      <styleUrl>#routeStyle</styleUrl>')
-    kml_content.append('      <LineString>')
-    kml_content.append('        <tessellate>1</tessellate>')
-    kml_content.append('        <coordinates>')
+    kml_content.append("    <Placemark>")
+    kml_content.append(f"      <name>{route_name} - Track</name>")
+    kml_content.append("      <styleUrl>#routeStyle</styleUrl>")
+    kml_content.append("      <LineString>")
+    kml_content.append("        <tessellate>1</tessellate>")
+    kml_content.append("        <coordinates>")
 
     # Add all track points
     for point in all_points:
         lat, lon = point["coords"]
         # KML uses lon,lat,elevation format
-        kml_content.append(f'          {lon},{lat},0')
+        kml_content.append(f"          {lon},{lat},0")
 
-    kml_content.append('        </coordinates>')
-    kml_content.append('      </LineString>')
-    kml_content.append('    </Placemark>')
+    kml_content.append("        </coordinates>")
+    kml_content.append("      </LineString>")
+    kml_content.append("    </Placemark>")
 
     # Add start point
     start_lat, start_lon = all_points[0]["coords"]
-    kml_content.append('    <Placemark>')
-    kml_content.append('      <name>Start</name>')
-    kml_content.append(f'      <description>Start of hike: {start_time.strftime("%Y-%m-%d %H:%M")}</description>')
-    kml_content.append('      <styleUrl>#startStyle</styleUrl>')
-    kml_content.append('      <Point>')
-    kml_content.append(f'        <coordinates>{start_lon},{start_lat},0</coordinates>')
-    kml_content.append('      </Point>')
-    kml_content.append('    </Placemark>')
+    kml_content.append("    <Placemark>")
+    kml_content.append("      <name>Start</name>")
+    kml_content.append(
+        f'      <description>Start of hike: {start_time.strftime("%Y-%m-%d %H:%M")}</description>'
+    )
+    kml_content.append("      <styleUrl>#startStyle</styleUrl>")
+    kml_content.append("      <Point>")
+    kml_content.append(f"        <coordinates>{start_lon},{start_lat},0</coordinates>")
+    kml_content.append("      </Point>")
+    kml_content.append("    </Placemark>")
 
     # Add sleep stops
     for i, stop in enumerate(sleep_stops):
         lat, lon = stop["point"]["coords"]
-        kml_content.append('    <Placemark>')
-        kml_content.append(f'      <name>Night {i+1} Camp</name>')
-        kml_content.append(f'      <description>Overnight stop {i+1}<br/>Distance: {stop["point"]["cumulative_distance"]:.2f} km</description>')
-        kml_content.append('      <styleUrl>#sleepStyle</styleUrl>')
-        kml_content.append('      <Point>')
-        kml_content.append(f'        <coordinates>{lon},{lat},0</coordinates>')
-        kml_content.append('      </Point>')
-        kml_content.append('    </Placemark>')
+        kml_content.append("    <Placemark>")
+        kml_content.append(f"      <name>Night {i+1} Camp</name>")
+        kml_content.append(
+            f'      <description>Overnight stop {i+1}<br/>Distance: {stop["point"]["cumulative_distance"]:.2f} km</description>'
+        )
+        kml_content.append("      <styleUrl>#sleepStyle</styleUrl>")
+        kml_content.append("      <Point>")
+        kml_content.append(f"        <coordinates>{lon},{lat},0</coordinates>")
+        kml_content.append("      </Point>")
+        kml_content.append("    </Placemark>")
 
     # Add end point
     end_lat, end_lon = all_points[-1]["coords"]
-    kml_content.append('    <Placemark>')
-    kml_content.append('      <name>Finish</name>')
-    kml_content.append(f'      <description>End of hike: {end_time.strftime("%Y-%m-%d %H:%M")}</description>')
-    kml_content.append('      <styleUrl>#endStyle</styleUrl>')
-    kml_content.append('      <Point>')
-    kml_content.append(f'        <coordinates>{end_lon},{end_lat},0</coordinates>')
-    kml_content.append('      </Point>')
-    kml_content.append('    </Placemark>')
+    kml_content.append("    <Placemark>")
+    kml_content.append("      <name>Finish</name>")
+    kml_content.append(
+        f'      <description>End of hike: {end_time.strftime("%Y-%m-%d %H:%M")}</description>'
+    )
+    kml_content.append("      <styleUrl>#endStyle</styleUrl>")
+    kml_content.append("      <Point>")
+    kml_content.append(f"        <coordinates>{end_lon},{end_lat},0</coordinates>")
+    kml_content.append("      </Point>")
+    kml_content.append("    </Placemark>")
 
-    kml_content.append('  </Document>')
-    kml_content.append('</kml>')
+    kml_content.append("  </Document>")
+    kml_content.append("</kml>")
 
     # Write to file
     with open(filename, "w", encoding="utf-8") as f:
@@ -1133,6 +1223,7 @@ def main():
     print(f"- GPX file: {output_file}")
     print(f"- Markdown itinerary: {md_filename}")
     print(f"- KML file: {kml_filename}")
+
 
 if __name__ == "__main__":
     main()
