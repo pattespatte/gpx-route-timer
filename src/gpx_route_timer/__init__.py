@@ -133,31 +133,44 @@ def format_map_link(lat, lon):
 
 
 def format_route_link(all_points, sleep_stops):
-    """Create a Google Maps route link for the entire route with waypoints"""
+    """Create a Google Maps route link for the entire route with waypoints and walking mode"""
     # Start point
     start_lat, start_lon = all_points[0]["coords"]
-    waypoints = [f"{start_lat},{start_lon}"]
-
-    # Add sleep stops as waypoints
-    for stop in sleep_stops:
-        lat, lon = stop["point"]["coords"]
-        waypoints.append(f"{lat},{lon}")
 
     # End point
     end_lat, end_lon = all_points[-1]["coords"]
-    waypoints.append(f"{end_lat},{end_lon}")
 
-    # Google Maps directions URL format
-    # First waypoint is origin, last is destination, middle ones are waypoints
-    if len(waypoints) == 2:
-        # No intermediate waypoints
-        return f"https://www.google.com/maps/dir/{waypoints[0]}/{waypoints[1]}"
-    else:
-        # With intermediate waypoints
-        origin = waypoints[0]
-        destination = waypoints[-1]
-        intermediate = "/".join(waypoints[1:-1])
-        return f"https://www.google.com/maps/dir/{origin}/{intermediate}/{destination}"
+    # Build the URL using Google Maps Directions API format
+    base_url = "https://www.google.com/maps/dir/?api=1"
+
+    # Add origin and destination
+    url_params = [
+        f"origin={start_lat},{start_lon}",
+        f"destination={end_lat},{end_lon}",
+        "travelmode=walking"
+    ]
+
+    # Add waypoints if there are sleep stops
+    if sleep_stops:
+        waypoints = []
+        for stop in sleep_stops:
+            lat, lon = stop["point"]["coords"]
+            waypoints.append(f"{lat},{lon}")
+
+        if waypoints:
+            # Google Maps API allows up to 25 waypoints, but for better performance
+            # and URL length limits, we'll limit to the first 8 waypoints
+            if len(waypoints) > 8:
+                waypoints = waypoints[:8]
+                print(f"Note: Limited to first 8 waypoints in Google Maps link due to URL length restrictions")
+
+            waypoints_str = "|".join(waypoints)
+            url_params.append(f"waypoints={waypoints_str}")
+
+    # Combine all parameters
+    full_url = base_url + "&" + "&".join(url_params)
+
+    return full_url
 
 
 def find_closest_point(points, target_distance):
@@ -546,6 +559,139 @@ def create_komoot_compatible_gpx(
         time_elem.text = current_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
     return root
+
+
+def create_daily_gpx_files(
+    all_points, sleep_stops, start_time, end_time, walking_speed, route_name, base_filename
+):
+    """Create separate GPX files for each hiking day"""
+    daily_files = []
+
+    # Calculate total days
+    total_days = len(sleep_stops) + 1 if sleep_stops else 1
+
+    # Create day boundaries (point indices where each day starts/ends)
+    day_boundaries = [0]  # Start with first point
+
+    # Add sleep stop indices as day boundaries
+    for stop in sleep_stops:
+        for i, point in enumerate(all_points):
+            if point == stop["point"]:
+                day_boundaries.append(i)
+                break
+
+    # Add last point as final boundary
+    day_boundaries.append(len(all_points) - 1)
+
+    # Create GPX file for each day
+    for day_num in range(total_days):
+        start_idx = day_boundaries[day_num]
+        end_idx = day_boundaries[day_num + 1]
+
+        # Get points for this day
+        day_points = all_points[start_idx:end_idx + 1]
+
+        # Calculate day start and end times
+        if day_num == 0:
+            # First day
+            day_start_time = start_time
+        else:
+            # Middle days start at 9:00
+            day_start_time = start_time.replace(
+                hour=DEFAULT_START_HOUR, minute=0, second=0, microsecond=0
+            ) + timedelta(days=day_num)
+
+        if day_num == total_days - 1:
+            # Last day
+            day_end_time = end_time
+        else:
+            # Calculate end time based on distance and walking speed
+            day_distance = day_points[-1]["cumulative_distance"] - day_points[0]["cumulative_distance"]
+            day_hours = day_distance / walking_speed
+            day_end_time = day_start_time + timedelta(hours=day_hours)
+
+        # Create day-specific route name
+        day_route_name = f"{route_name} - Day {day_num + 1}"
+
+        # Create GPX structure for this day
+        root = ET.Element("gpx")
+        root.set("version", "1.1")
+        root.set("creator", GITHUB_URL)
+        root.set("xmlns", GPX_NAMESPACE)
+        root.set("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
+        root.set(
+            "xsi:schemaLocation",
+            f"{GPX_NAMESPACE} {GPX_NAMESPACE}/gpx.xsd",
+        )
+
+        # Add metadata
+        metadata = ET.SubElement(root, "metadata")
+        name = ET.SubElement(metadata, "name")
+        name.text = day_route_name
+
+        author = ET.SubElement(metadata, "author")
+        link = ET.SubElement(author, "link")
+        link.set("href", GITHUB_URL)
+        link_text = ET.SubElement(link, "text")
+        link_text.text = "GPX Route Timer"
+        link_type = ET.SubElement(link, "type")
+        link_type.text = "text/html"
+
+        # Add creation time
+        time_elem = ET.SubElement(metadata, "time")
+        time_elem.text = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Add route
+        rte = ET.SubElement(root, "rte")
+        rte_name = ET.SubElement(rte, "name")
+        rte_name.text = day_route_name
+
+        # Add route points with timestamps
+        day_distance_start = day_points[0]["cumulative_distance"]
+
+        for point in day_points:
+            # Calculate time for this point within the day
+            distance_from_day_start = point["cumulative_distance"] - day_distance_start
+            hours_from_day_start = distance_from_day_start / walking_speed
+            current_time = day_start_time + timedelta(hours=hours_from_day_start)
+
+            # Create route point
+            rtept = ET.SubElement(rte, "rtept")
+            rtept.set("lat", str(point["coords"][0]))
+            rtept.set("lon", str(point["coords"][1]))
+
+            # Add elevation if it exists
+            ele_elem = point["element"].find(".//ele")
+            if ele_elem is None:
+                ele_elem = point["element"].find(f".//{{{GPX_NAMESPACE}}}ele")
+            if ele_elem is not None:
+                ele = ET.SubElement(rtept, "ele")
+                ele.text = ele_elem.text
+
+            # Add time
+            time_elem = ET.SubElement(rtept, "time")
+            time_elem.text = current_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+        # Pretty print the XML
+        indent_xml(root)
+
+        # Generate filename for this day
+        day_filename = f"{base_filename}--day-{day_num + 1:02d}.gpx"
+
+        # Save the day's GPX file
+        tree = ET.ElementTree(root)
+        tree.write(day_filename, xml_declaration=True, encoding="UTF-8", method="xml")
+
+        daily_files.append({
+            'filename': day_filename,
+            'day': day_num + 1,
+            'start_time': day_start_time,
+            'end_time': day_end_time,
+            'distance': day_points[-1]["cumulative_distance"] - day_points[0]["cumulative_distance"],
+            'points': len(day_points)
+        })
+
+    return daily_files
 
 
 def indent_xml(elem, level=0):
@@ -1231,6 +1377,27 @@ def main():
     tree.write(output_file, xml_declaration=True, encoding="UTF-8", method="xml")
 
     print(f"\nGPX route file saved as '{output_file}'")
+
+    # Add this new section here:
+    # Ask if user wants to split into daily files
+    if sleep_stops:  # Only offer this option for multi-day hikes
+        print("\nWould you like to save each hiking day in a separate GPX file?")
+        split_days = input("Press ENTER to keep as one file or type 'yes' to split each day as a file: ").strip().lower()
+
+        if split_days == "yes":
+            # Extract base filename without extension
+            base_filename = os.path.splitext(output_file)[0]
+
+            print("\nCreating daily GPX files...")
+            daily_files = create_daily_gpx_files(
+                all_points, sleep_stops, start_time, end_time, walking_speed, route_name, base_filename
+            )
+
+            print(f"\nCreated {len(daily_files)} daily GPX files:")
+            for day_file in daily_files:
+                print(f"- Day {day_file['day']}: {day_file['filename']} ({day_file['distance']:.1f} km, {day_file['points']} points)")
+
+    # Continue with the rest of the function...
     print(f"Total hiking days: {num_days}")
     print(f"Average daily distance: {total_distance/num_days:.2f} km")
     print(
@@ -1298,6 +1465,12 @@ def main():
 
     print(f"\nFiles created:")
     print(f"- GPX file: {output_file}")
+
+    # Add daily files to the summary if they exist
+    if 'daily_files' in locals() and daily_files:
+        for day_file in daily_files:
+            print(f"- Day {day_file['day']} GPX: {day_file['filename']}")
+
     print(f"- Markdown itinerary: {md_filename}")
     print(f"- KML file: {kml_filename}")
 
