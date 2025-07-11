@@ -87,6 +87,7 @@ def check_and_install_dependencies():
         "geopy": "geopy",
         "numpy": "numpy",
         "colorama": "colorama",
+        "matplotlib": "matplotlib",
     }
 
     missing = []
@@ -137,9 +138,9 @@ class Colors:
     ERROR = Fore.RED
     INFO = Fore.CYAN
     HIGHLIGHT = Fore.MAGENTA
+    PROMPT = Fore.BLUE + Style.BRIGHT  # For user input prompts
     BOLD = Style.BRIGHT
     RESET = Style.RESET_ALL
-
 
 def get_user_input(prompt, default):
     """Get user input with a default value"""
@@ -310,7 +311,7 @@ def calculate_cumulative_distances(all_points):
             # Show progress for large files
             if num_points > 1000 and i % 100 == 0:
                 progress = (i / num_points) * 100
-                print(f"\r{Colors.INFO}Progress: {progress:.1f}% ({i}/{num_points} points)", end="")
+                print(f"\r{Colors.INFO}Progress: {Colors.HIGHLIGHT}{progress:.1f}%{Colors.RESET} ({i}/{num_points} points)", end="")
 
         if num_points > 1000:
             print(f"\r{Colors.SUCCESS}Progress: 100.0% ({num_points}/{num_points} points) - Done!")
@@ -837,6 +838,9 @@ def save_markdown_itinerary(
     md_content.append(
         f"- **Mobile**: Import the `.kml` file through the Google Earth mobile app"
     )
+    # Add image if it exists
+    image_filename = os.path.splitext(filename)[0] + ".png"
+    md_content.append(f"![Route map]({os.path.basename(image_filename)})\n")
 
     # Write to file
     with open(filename, "w", encoding="utf-8") as f:
@@ -1001,6 +1005,37 @@ def validate_gpx_data(all_points, sleep_stops, total_distance):
     return warnings
 
 
+def save_route_image(filename, all_points, sleep_stops, route_name):
+    """Save a PNG image of the route using matplotlib"""
+    import matplotlib.pyplot as plt
+
+    lats = [pt["coords"][0] for pt in all_points]
+    lons = [pt["coords"][1] for pt in all_points]
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(lons, lats, color="blue", linewidth=2, label="Route")
+
+    # Mark start and end
+    plt.scatter(lons[0], lats[0], color="green", s=80, label="Start", zorder=5)
+    plt.scatter(lons[-1], lats[-1], color="red", s=80, label="End", zorder=5)
+
+    # Mark sleep stops
+    if sleep_stops:
+        sleep_lats = [stop["point"]["coords"][0] for stop in sleep_stops]
+        sleep_lons = [stop["point"]["coords"][1] for stop in sleep_stops]
+        plt.scatter(sleep_lons, sleep_lats, color="orange", s=60, label="Overnight", zorder=5)
+
+    plt.title(route_name)
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150)
+    plt.close()
+    print(f"{Colors.SUCCESS}PNG image saved as '{filename}'")
+
+
 def main():
     # Support -e or -example for the example GPX
     example_url = (
@@ -1044,7 +1079,7 @@ def main():
         print(f"{Colors.WARNING}The input GPX does not contain a route or track, only individual waypoints.")
         print(f"{Colors.INFO}These waypoints can be converted into a planned route by connecting them in order.")
 
-        convert = input("Convert waypoints to a route? (yes/no): ").strip().lower()
+        convert = input(f"{Colors.PROMPT}Convert waypoints to a route? (yes/no): {Colors.RESET}").strip().lower()
         if convert != "yes":
             print(f"{Colors.WARNING}Exiting without processing.")
             sys.exit(0)
@@ -1369,7 +1404,7 @@ def main():
         print(f"\n{Colors.WARNING}⚠️  Route validation warnings:")
         for warning in warnings:
             print(f"   {Colors.WARNING}- {warning}")
-        proceed = input(f"\n{Colors.WARNING}Do you want to continue anyway? (yes/no): ").strip().lower()
+        proceed = input(f"\n{Colors.PROMPT}Do you want to continue anyway? (yes/no): {Colors.RESET}").strip().lower()
         if proceed != "yes":
             print(f"{Colors.WARNING}Exiting without saving.")
             return
@@ -1502,6 +1537,15 @@ def main():
         end_time,
     )
 
+    # Save PNG image
+    png_filename = os.path.splitext(output_file)[0] + ".png"
+    save_route_image(
+        png_filename,
+        all_points,
+        sleep_stops,
+        route_name,
+    )
+
     print(f"\n{Colors.BOLD}Files created:")
     print(f"{Colors.SUCCESS}- GPX file: {Colors.HIGHLIGHT}{output_file}")
 
@@ -1512,6 +1556,7 @@ def main():
 
     print(f"{Colors.SUCCESS}- Markdown itinerary: {Colors.HIGHLIGHT}{md_filename}")
     print(f"{Colors.SUCCESS}- KML file: {Colors.HIGHLIGHT}{kml_filename}")
+    print(f"{Colors.SUCCESS}- PNG image: {Colors.HIGHLIGHT}{png_filename}")
 
 
 if __name__ == "__main__":
