@@ -398,10 +398,66 @@ def load_gpx_content(source):
             sys.exit(1)
 
 
+def detect_gpx_type(root):
+    """Detect the type of GPX content and return waypoints, tracks, or routes"""
+    waypoints = root.findall(f".//{{{GPX_NAMESPACE}}}wpt")
+    tracks = root.findall(f".//{{{GPX_NAMESPACE}}}trk")
+    routes = root.findall(f".//{{{GPX_NAMESPACE}}}rte")
+
+    # Return in order of preference: routes, tracks, waypoints
+    if routes:
+        return "route", routes
+    elif tracks:
+        return "track", tracks
+    elif waypoints:
+        return "waypoint", waypoints
+    else:
+        return "none", []
+
+
+def extract_points_from_waypoints(waypoints):
+    """Convert waypoints to track-like points"""
+    all_points = []
+    for wpt in waypoints:
+        lat = float(wpt.get("lat"))
+        lon = float(wpt.get("lon"))
+        all_points.append(
+            {"element": wpt, "coords": (lat, lon), "cumulative_distance": 0}
+        )
+    return all_points
+
+
+def extract_points_from_routes(routes):
+    """Extract points from route elements"""
+    all_points = []
+    for rte in routes:
+        for pt in rte.findall(f".//{{{GPX_NAMESPACE}}}rtept"):
+            lat = float(pt.get("lat"))
+            lon = float(pt.get("lon"))
+            all_points.append(
+                {"element": pt, "coords": (lat, lon), "cumulative_distance": 0}
+            )
+    return all_points
+
+
+def extract_points_from_tracks(tracks):
+    """Extract points from track elements"""
+    all_points = []
+    for trk in tracks:
+        for seg in trk.findall(f".//{{{GPX_NAMESPACE}}}trkseg"):
+            for pt in seg.findall(f".//{{{GPX_NAMESPACE}}}trkpt"):
+                lat = float(pt.get("lat"))
+                lon = float(pt.get("lon"))
+                all_points.append(
+                    {"element": pt, "coords": (lat, lon), "cumulative_distance": 0}
+                )
+    return all_points
+
+
 def create_komoot_compatible_gpx(
     all_points, sleep_stops, start_time, end_time, walking_speed, route_name
 ):
-    """Create a new GPX structure that matches Komoot's expected format"""
+    """Create a new GPX structure with routes that matches Komoot's expected format"""
     # Create root element with proper attributes
     root = ET.Element("gpx")
     root.set("version", "1.1")
@@ -430,15 +486,12 @@ def create_komoot_compatible_gpx(
     time_elem = ET.SubElement(metadata, "time")
     time_elem.text = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Add track
-    trk = ET.SubElement(root, "trk")
-    trk_name = ET.SubElement(trk, "name")
-    trk_name.text = route_name
+    # Add route (instead of track)
+    rte = ET.SubElement(root, "rte")
+    rte_name = ET.SubElement(rte, "name")
+    rte_name.text = route_name
 
-    # Add track segment
-    trkseg = ET.SubElement(trk, "trkseg")
-
-    # Calculate actual walking schedule and add track points
+    # Calculate actual walking schedule and add route points
     current_day = 0
     day_start_time = start_time
     day_distance_walked = 0
@@ -473,21 +526,22 @@ def create_komoot_compatible_gpx(
         distance_today = point["cumulative_distance"] - day_distance_walked
         hours_today = distance_today / walking_speed
         current_time = day_start_time + timedelta(hours=hours_today)
-        # Create track point
-        trkpt = ET.SubElement(trkseg, "trkpt")
-        trkpt.set("lat", str(point["coords"][0]))
-        trkpt.set("lon", str(point["coords"][1]))
+
+        # Create route point (rtept instead of trkpt)
+        rtept = ET.SubElement(rte, "rtept")
+        rtept.set("lat", str(point["coords"][0]))
+        rtept.set("lon", str(point["coords"][1]))
 
         # Add elevation if it exists
         ele_elem = point["element"].find(".//ele")
         if ele_elem is None:
             ele_elem = point["element"].find(f".//{{{GPX_NAMESPACE}}}ele")
         if ele_elem is not None:
-            ele = ET.SubElement(trkpt, "ele")
+            ele = ET.SubElement(rtept, "ele")
             ele.text = ele_elem.text
 
         # Add time with exactly 3 decimal places for milliseconds
-        time_elem = ET.SubElement(trkpt, "time")
+        time_elem = ET.SubElement(rtept, "time")
         # Format: YYYY-MM-DDTHH:MM:SS.sssZ
         time_elem.text = current_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
@@ -784,22 +838,46 @@ def main():
         print(f"Error parsing GPX file: {e}")
         sys.exit(1)
 
-    # Extract all trackpoints
-    all_points = []
-    for trk in root.findall(f".//{{{GPX_NAMESPACE}}}trk"):
-        for seg in trk.findall(f".//{{{GPX_NAMESPACE}}}trkseg"):
-            for pt in seg.findall(f".//{{{GPX_NAMESPACE}}}trkpt"):
-                lat = float(pt.get("lat"))
-                lon = float(pt.get("lon"))
-                all_points.append(
-                    {"element": pt, "coords": (lat, lon), "cumulative_distance": 0}
-                )
+    # Detect GPX type and extract points accordingly
+    gpx_type, elements = detect_gpx_type(root)
 
-    if not all_points:
-        print("Error: No track points found in GPX file")
+    if gpx_type == "none":
+        print("Error: No waypoints, tracks, or routes found in GPX file")
         sys.exit(1)
 
-    print(f"Found {len(all_points)} track points")
+    # Handle different GPX types
+    if gpx_type == "waypoint":
+        print(f"Found {len(elements)} waypoints in the GPX file.")
+        print("The input GPX does not contain a route or track, only individual waypoints.")
+        print(
+            "These waypoints can be converted into a planned route by connecting them in order."
+        )
+
+        convert = input("Convert waypoints to a route? (yes/no): ").strip().lower()
+        if convert != "yes":
+            print("Exiting without processing.")
+            sys.exit(0)
+
+        all_points = extract_points_from_waypoints(elements)
+        print(f"Converting {len(all_points)} waypoints to a planned route...")
+
+    elif gpx_type == "track":
+        print(f"Found recorded track data in the GPX file.")
+        print(
+            "The input contains a recorded path (track). It will be converted into a planned route."
+        )
+
+        all_points = extract_points_from_tracks(elements)
+        print(f"Converting {len(all_points)} track points to a planned route...")
+
+    elif gpx_type == "route":
+        print(f"Found route data in the GPX file.")
+        all_points = extract_points_from_routes(elements)
+        print(f"Processing {len(all_points)} route points...")
+
+    if not all_points:
+        print("Error: No points could be extracted from the GPX file")
+        sys.exit(1)
 
     # Calculate cumulative distance with progress indicator
     total_distance = calculate_cumulative_distances(all_points)
@@ -1152,7 +1230,7 @@ def main():
     tree = ET.ElementTree(new_root)
     tree.write(output_file, xml_declaration=True, encoding="UTF-8", method="xml")
 
-    print(f"\nGPX file saved as '{output_file}'")
+    print(f"\nGPX route file saved as '{output_file}'")
     print(f"Total hiking days: {num_days}")
     print(f"Average daily distance: {total_distance/num_days:.2f} km")
     print(
@@ -1218,7 +1296,6 @@ def main():
         end_time,
     )
 
-    # Update the final print statement:
     print(f"\nFiles created:")
     print(f"- GPX file: {output_file}")
     print(f"- Markdown itinerary: {md_filename}")
