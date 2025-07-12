@@ -834,10 +834,10 @@ def save_markdown_itinerary(
 
 
 def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end_time):
-    """Save the route as a KML file"""
+    """Save the route as a KML file with flythrough tour"""
     kml_content = []
     kml_content.append('<?xml version="1.0" encoding="UTF-8"?>')
-    kml_content.append('<kml xmlns="http://www.opengis.net/kml/2.2">')
+    kml_content.append('<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">')
     kml_content.append("  <Document>")
     kml_content.append(f"    <name>{route_name}</name>")
     kml_content.append(
@@ -872,6 +872,85 @@ def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end
     kml_content.append("        <scale>1.2</scale>")
     kml_content.append("      </IconStyle>")
     kml_content.append("    </Style>")
+
+    # Add tour for flythrough
+    kml_content.append('    <gx:Tour>')
+    kml_content.append('      <name>Hike Flythrough</name>')
+    kml_content.append('      <description>Animated flythrough of the hiking route</description>')
+    kml_content.append('      <gx:Playlist>')
+
+    # Create flythrough waypoints - use start, sleep stops, and end
+    tour_points = []
+    
+    # Add start point
+    start_lat, start_lon = all_points[0]["coords"]
+    tour_points.append((start_lon, start_lat, "Start"))
+    
+    # Add sleep stops
+    for i, stop in enumerate(sleep_stops):
+        lat, lon = stop["point"]["coords"]
+        tour_points.append((lon, lat, f"Night {i+1} Camp"))
+    
+    # Add end point
+    end_lat, end_lon = all_points[-1]["coords"]
+    tour_points.append((end_lon, end_lat, "Finish"))
+
+    # Create FlyTo elements for each tour point
+    for i, (lon, lat, name) in enumerate(tour_points):
+        # First point gets a longer duration to establish the view
+        duration = 8.0 if i == 0 else 5.0
+        
+        # Vary the viewing angle slightly for visual interest
+        tilt = 45 + (i * 5) % 30  # Varies between 45-75 degrees
+        range_distance = 800 if i == 0 else 600  # Start with wider view
+        
+        kml_content.append('        <gx:FlyTo>')
+        kml_content.append(f'          <gx:duration>{duration}</gx:duration>')
+        kml_content.append('          <gx:flyToMode>smooth</gx:flyToMode>')
+        kml_content.append('          <LookAt>')
+        kml_content.append(f'            <longitude>{lon}</longitude>')
+        kml_content.append(f'            <latitude>{lat}</latitude>')
+        kml_content.append('            <altitude>0</altitude>')
+        kml_content.append(f'            <range>{range_distance}</range>')
+        kml_content.append(f'            <tilt>{tilt}</tilt>')
+        kml_content.append(f'            <heading>{(i * 30) % 360}</heading>')  # Rotate view
+        kml_content.append('          </LookAt>')
+        kml_content.append('        </gx:FlyTo>')
+        
+        # Add a pause at each significant point
+        if i < len(tour_points) - 1:  # Don't pause at the last point
+            kml_content.append('        <gx:Wait>')
+            kml_content.append('          <gx:duration>2.0</gx:duration>')
+            kml_content.append('        </gx:Wait>')
+
+    # Add a final overview shot
+    # Calculate center point and bounding box for overview
+    all_lats = [pt["coords"][0] for pt in all_points]
+    all_lons = [pt["coords"][1] for pt in all_points]
+    center_lat = (min(all_lats) + max(all_lats)) / 2
+    center_lon = (min(all_lons) + max(all_lons)) / 2
+    
+    # Calculate range based on route extent
+    lat_range = max(all_lats) - min(all_lats)
+    lon_range = max(all_lons) - min(all_lons)
+    overview_range = max(lat_range, lon_range) * 111000 * 1.5  # Convert to meters and add margin
+    overview_range = max(overview_range, 2000)  # Minimum 2km range
+    
+    kml_content.append('        <gx:FlyTo>')
+    kml_content.append('          <gx:duration>6.0</gx:duration>')
+    kml_content.append('          <gx:flyToMode>smooth</gx:flyToMode>')
+    kml_content.append('          <LookAt>')
+    kml_content.append(f'            <longitude>{center_lon}</longitude>')
+    kml_content.append(f'            <latitude>{center_lat}</latitude>')
+    kml_content.append('            <altitude>0</altitude>')
+    kml_content.append(f'            <range>{overview_range}</range>')
+    kml_content.append('            <tilt>0</tilt>')
+    kml_content.append('            <heading>0</heading>')
+    kml_content.append('          </LookAt>')
+    kml_content.append('        </gx:FlyTo>')
+
+    kml_content.append('      </gx:Playlist>')
+    kml_content.append('    </gx:Tour>')
 
     # Add route line
     kml_content.append("    <Placemark>")
@@ -944,48 +1023,48 @@ def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end
 def validate_gpx_data(all_points, sleep_stops, total_distance):
     """Validate GPX data and return list of warnings"""
     warnings = []
-    
+
     # Check if route has reasonable number of points
     if len(all_points) < 2:
         warnings.append("Route has very few points (less than 2)")
-    
+
     # Check for reasonable daily distances
     if sleep_stops:
         daily_distances = []
         prev_distance = 0
-        
+
         for stop in sleep_stops:
             daily_distance = stop["point"]["cumulative_distance"] - prev_distance
             daily_distances.append(daily_distance)
             prev_distance = stop["point"]["cumulative_distance"]
-        
+
         # Add final day distance
         final_distance = total_distance - prev_distance
         daily_distances.append(final_distance)
-        
+
         # Check for unreasonably long daily distances (over 40km)
         for i, distance in enumerate(daily_distances):
             if distance > 40:
                 warnings.append(f"Day {i+1} distance is very long: {distance:.1f} km")
             elif distance < 1:
                 warnings.append(f"Day {i+1} distance is very short: {distance:.1f} km")
-    
+
     # Check total distance reasonableness
     if total_distance > 500:
         warnings.append(f"Total distance is very long: {total_distance:.1f} km")
     elif total_distance < 1:
         warnings.append(f"Total distance is very short: {total_distance:.1f} km")
-    
+
     # Check for duplicate coordinates (might indicate GPS errors)
     coord_counts = {}
     for point in all_points:
         coord_key = f"{point['coords'][0]:.6f},{point['coords'][1]:.6f}"
         coord_counts[coord_key] = coord_counts.get(coord_key, 0) + 1
-    
+
     duplicate_coords = sum(1 for count in coord_counts.values() if count > 1)
     if duplicate_coords > len(all_points) * 0.1:  # More than 10% duplicates
         warnings.append(f"High number of duplicate coordinates detected: {duplicate_coords}")
-    
+
     return warnings
 
 
@@ -1007,7 +1086,7 @@ def save_route_image(filename, all_points, sleep_stops, route_name):
     if sleep_stops:
         sleep_lats = [stop["point"]["coords"][0] for stop in sleep_stops]
         sleep_lons = [stop["point"]["coords"][1] for stop in sleep_stops]
-        plt.scatter(sleep_lons, sleep_lats, color="orange", s=60, label="Overnight", zorder=5)
+        plt.scatter(sleep_lons, sleep_lats, s=60, label="Overnight", zorder=5)
 
     plt.title(route_name)
     plt.xlabel("Longitude")
@@ -1222,21 +1301,21 @@ def main():
                 if elem.tag == "time" or elem.tag.endswith("}time"):
                     time_elem = elem
                     break
-            
+
             if time_elem is not None and time_elem.text:
                 try:
                     timestamp = datetime.fromisoformat(time_elem.text.rstrip("Z"))
                     timestamps.append((i, timestamp))
                 except:
                     pass
-        
+
         # Look for gaps of more than OVERNIGHT_GAP_HOURS hours
         if len(timestamps) > 1:
             for i in range(1, len(timestamps)):
-                prev_idx, prev_time = timestamps[i-1]
+                prev_idx, prev_time = timestamps[i - 1]
                 curr_idx, curr_time = timestamps[i]
                 time_gap = (curr_time - prev_time).total_seconds() / 3600
-                
+
                 if time_gap >= OVERNIGHT_GAP_HOURS:
                     # Found an overnight gap - mark the point before the gap as a stop
                     existing_stop_indices.append(prev_idx)
