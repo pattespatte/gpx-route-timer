@@ -86,7 +86,6 @@ def check_and_install_dependencies():
         "requests": "requests",
         "geopy": "geopy",
         "numpy": "numpy",
-        "colorama": "colorama",
         "matplotlib": "matplotlib",
     }
 
@@ -125,22 +124,7 @@ from geopy.distance import geodesic
 import numpy as np
 import os
 from urllib.parse import quote, urlparse
-from colorama import Fore, Back, Style, init
 
-# Initialize colorama
-init(autoreset=True)
-
-
-# Color constants for different message types
-class Colors:
-    SUCCESS = Fore.GREEN
-    WARNING = Fore.YELLOW
-    ERROR = Fore.RED
-    INFO = Fore.CYAN
-    HIGHLIGHT = Fore.MAGENTA
-    PROMPT = Fore.BLUE + Style.BRIGHT  # For user input prompts
-    BOLD = Style.BRIGHT
-    RESET = Style.RESET_ALL
 
 def get_user_input(prompt, default):
     """Get user input with a default value"""
@@ -270,7 +254,7 @@ def calculate_cumulative_distances(all_points):
     """Calculate cumulative distances with vectorized operations when possible"""
     num_points = len(all_points)
 
-    print(f"\n{Colors.INFO}Calculating route distance...")
+    print(f"\nCalculating route distance...")
 
     # For small files or when high accuracy is needed, use geopy
     # For large files, use vectorized calculation for speed
@@ -278,10 +262,10 @@ def calculate_cumulative_distances(all_points):
 
     try:
         if use_vectorized:
-            print(f"{Colors.INFO}Using fast vectorized calculation for large GPX file...")
+            print(f"Using fast vectorized calculation for large GPX file...")
             distances = calculate_distances_vectorized(all_points)
         else:
-            print(f"{Colors.INFO}Using high-accuracy calculation...")
+            print(f"Using high-accuracy calculation...")
             distances = calculate_distances_fallback(all_points)
 
         # Assign distances to points
@@ -291,12 +275,12 @@ def calculate_cumulative_distances(all_points):
         total_distance = distances[-1]
 
         if use_vectorized:
-            print(f"{Colors.SUCCESS}Fast calculation completed for {num_points} points")
+            print(f"Fast calculation completed for {num_points} points")
         else:
-            print(f"{Colors.SUCCESS}High-accuracy calculation completed for {num_points} points")
+            print(f"High-accuracy calculation completed for {num_points} points")
 
     except Exception as e:
-        print(f"{Colors.ERROR}Error in vectorized calculation, falling back to point-by-point: {e}")
+        print(f"Error in vectorized calculation, falling back to point-by-point: {e}")
         # Fallback to original method
         total_distance = 0
 
@@ -311,17 +295,17 @@ def calculate_cumulative_distances(all_points):
             # Show progress for large files
             if num_points > 1000 and i % 100 == 0:
                 progress = (i / num_points) * 100
-                print(f"\r{Colors.INFO}Progress: {Colors.HIGHLIGHT}{progress:.1f}%{Colors.RESET} ({i}/{num_points} points)", end="")
+                print(f"\rProgress: {progress:.1f}% ({i}/{num_points} points)", end="")
 
         if num_points > 1000:
-            print(f"\r{Colors.SUCCESS}Progress: 100.0% ({num_points}/{num_points} points) - Done!")
+            print(f"\rProgress: 100.0% ({num_points}/{num_points} points) - Done!")
 
     return total_distance
 
 
 def display_sleep_stops(sleep_stops, total_distance, title="Sleep-over locations:"):
     """Display sleep stops in a consistent format"""
-    print(f"\n{Colors.HIGHLIGHT}{title}")
+    print(f"\n{title}")
     for i, stop in enumerate(sleep_stops):
         lat, lon = stop["point"]["coords"]
         actual_dist = stop["point"]["cumulative_distance"]
@@ -337,12 +321,12 @@ def display_sleep_stops(sleep_stops, total_distance, title="Sleep-over locations
         # Calculate remaining distance
         remaining_distance = total_distance - actual_dist
 
-        print(f"\n{Colors.BOLD}Night {stop['night']}:")
+        print(f"\nNight {stop['night']}:")
         print(
-            f"  Distance from today's start: {Colors.SUCCESS}{today_distance:.2f} km{Colors.RESET} (distance to end: {remaining_distance:.2f} km)"
+            f"  Distance from today's start: {today_distance:.2f} km (distance to end: {remaining_distance:.2f} km)"
         )
-        print(f"  Coordinates: {Colors.INFO}{lat:.6f}, {lon:.6f}")
-        print(f"  View on map: {Colors.INFO}{format_map_link(lat, lon)}")
+        print(f"  Coordinates: {lat:.6f}, {lon:.6f}")
+        print(f"  View on map: {format_map_link(lat, lon)}")
 
 
 def parse_coordinates(coord_string):
@@ -375,27 +359,27 @@ def load_gpx_content(source):
     is_url = parsed.scheme in ("http", "https")
 
     if is_url:
-        print(f"\n{Colors.INFO}Downloading GPX file from URL...")
+        print(f"\nDownloading GPX file from URL...")
         try:
             response = requests.get(source)
             response.raise_for_status()
             return response.text
         except requests.exceptions.RequestException as e:
-            print(f"{Colors.ERROR}Error downloading file: {e}")
+            print(f"Error downloading file: {e}")
             sys.exit(1)
     else:
         # Treat as local file path
-        print(f"\n{Colors.INFO}Loading GPX file from local path...")
+        print(f"\nLoading GPX file from local path...")
         try:
             # Expand user home directory if needed
             file_path = os.path.expanduser(source)
             with open(file_path, "r", encoding="utf-8") as f:
                 return f.read()
         except FileNotFoundError:
-            print(f"{Colors.ERROR}Error: File not found: {file_path}")
+            print(f"Error: File not found: {file_path}")
             sys.exit(1)
         except Exception as e:
-            print(f"{Colors.ERROR}Error reading file: {e}")
+            print(f"Error reading file: {e}")
             sys.exit(1)
 
 
@@ -846,7 +830,7 @@ def save_markdown_itinerary(
     with open(filename, "w", encoding="utf-8") as f:
         f.write("\n".join(md_content))
 
-    print(f"{Colors.SUCCESS}Markdown file saved as '{filename}'")
+    print(f"Markdown file saved as '{filename}'")
 
 
 def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end_time):
@@ -954,7 +938,7 @@ def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end
     with open(filename, "w", encoding="utf-8") as f:
         f.write("\n".join(kml_content))
 
-    print(f"{Colors.SUCCESS}KML file saved as '{filename}'")
+    print(f"KML file saved as '{filename}'")
 
 
 def validate_gpx_data(all_points, sleep_stops, total_distance):
@@ -1033,7 +1017,7 @@ def save_route_image(filename, all_points, sleep_stops, route_name):
     plt.tight_layout()
     plt.savefig(filename, dpi=150)
     plt.close()
-    print(f"{Colors.SUCCESS}PNG image saved as '{filename}'")
+    print(f"PNG image saved as '{filename}'")
 
 
 def main():
@@ -1048,12 +1032,12 @@ def main():
             sys.exit(0)
         elif arg in ("-e", "-example"):
             source = example_url
-            print(f"\n{Colors.INFO}Using example GPX source: {source}")
+            print(f"\nUsing example GPX source: {source}")
         else:
             source = arg
-            print(f"\n{Colors.INFO}Using GPX source from command line: {source}")
+            print(f"\nUsing GPX source from command line: {source}")
     else:
-        print(f"\n{Colors.INFO}GPX source can be either a URL (http://...) or a local file path")
+        print(f"\nGPX source can be either a URL (http://...) or a local file path")
         source = get_user_input("GPX source (URL or file path)", example_url)
 
     # Load GPX content
@@ -1063,51 +1047,51 @@ def main():
     try:
         root = ET.fromstring(gpx_xml)
     except ET.ParseError as e:
-        print(f"{Colors.ERROR}Error parsing GPX file: {e}")
+        print(f"Error parsing GPX file: {e}")
         sys.exit(1)
 
     # Detect GPX type and extract points accordingly
     gpx_type, elements = detect_gpx_type(root)
 
     if gpx_type == "none":
-        print(f"{Colors.ERROR}Error: No waypoints, tracks, or routes found in GPX file")
+        print(f"Error: No waypoints, tracks, or routes found in GPX file")
         sys.exit(1)
 
     # Handle different GPX types
     if gpx_type == "waypoint":
-        print(f"{Colors.INFO}Found {len(elements)} waypoints in the GPX file.")
-        print(f"{Colors.WARNING}The input GPX does not contain a route or track, only individual waypoints.")
-        print(f"{Colors.INFO}These waypoints can be converted into a planned route by connecting them in order.")
+        print(f"Found {len(elements)} waypoints in the GPX file.")
+        print(f"The input GPX does not contain a route or track, only individual waypoints.")
+        print(f"These waypoints can be converted into a planned route by connecting them in order.")
 
-        convert = input(f"{Colors.PROMPT}Convert waypoints to a route? (yes/no): {Colors.RESET}").strip().lower()
+        convert = input(f"Convert waypoints to a route? (yes/no): ").strip().lower()
         if convert != "yes":
-            print(f"{Colors.WARNING}Exiting without processing.")
+            print(f"Exiting without processing.")
             sys.exit(0)
 
         all_points = extract_points_from_waypoints(elements)
-        print(f"{Colors.INFO}Converting {len(all_points)} waypoints to a planned route...")
+        print(f"Converting {len(all_points)} waypoints to a planned route...")
 
     elif gpx_type == "track":
-        print(f"{Colors.INFO}Found recorded track data in the GPX file.")
-        print(f"{Colors.INFO}The input contains a recorded path (track). It will be converted into a planned route.")
+        print(f"Found recorded track data in the GPX file.")
+        print(f"The input contains a recorded path (track). It will be converted into a planned route.")
 
         all_points = extract_points_from_tracks(elements)
-        print(f"{Colors.INFO}Converting {len(all_points)} track points to a planned route...")
+        print(f"Converting {len(all_points)} track points to a planned route...")
 
     elif gpx_type == "route":
-        print(f"{Colors.INFO}Found route data in the GPX file.")
+        print(f"Found route data in the GPX file.")
         all_points = extract_points_from_routes(elements)
-        print(f"{Colors.INFO}Processing {len(all_points)} route points...")
+        print(f"Processing {len(all_points)} route points...")
 
     if not all_points:
-        print(f"{Colors.ERROR}Error: No points could be extracted from the GPX file")
+        print(f"Error: No points could be extracted from the GPX file")
         sys.exit(1)
 
     # Calculate cumulative distance with progress indicator
     total_distance = calculate_cumulative_distances(all_points)
 
     # After calculating total distance, add Komoot notice
-    print(f"\n{Colors.INFO}Total distance: {Colors.HIGHLIGHT}{total_distance:.2f} km")
+    print(f"\nTotal distance: {total_distance:.2f} km")
 
     # ... existing code for detecting overnight stops ...
 
@@ -1117,8 +1101,8 @@ def main():
         hour=DEFAULT_START_HOUR, minute=0, second=0, microsecond=0
     )
     print(
-        f"\n{Colors.WARNING}Please note that Komoot will only accept a start time that is no longer than {KOMOOT_MAX_DAYS_AHEAD} days ahead. "
-        f"You can use {Colors.HIGHLIGHT}{suggested_date.strftime('%Y-%m-%dT%H:%M')}{Colors.RESET} (7 days from now)\n"
+        f"\nPlease note that Komoot will only accept a start time that is no longer than {KOMOOT_MAX_DAYS_AHEAD} days ahead. "
+        f"You can use {suggested_date.strftime('%Y-%m-%dT%H:%M')} (7 days from now)\n"
     )
 
     # Check if the GPX already has timestamps
@@ -1144,15 +1128,15 @@ def main():
 
     # Handle start time
     if existing_start_time:
-        print(f"\n{Colors.INFO}Start time: {Colors.HIGHLIGHT}{existing_start_time.strftime('%Y-%m-%dT%H:%M')}")
-        print(f"{Colors.INFO}(To keep, press ENTER. To set a new date, use the format YYYY-MM-DDTHH:MM):")
+        print(f"\nStart time: {existing_start_time.strftime('%Y-%m-%dT%H:%M')}")
+        print(f"(To keep, press ENTER. To set a new date, use the format YYYY-MM-DDTHH:MM):")
         start_time_input = input().strip()
 
         if start_time_input:
             try:
                 start_time = datetime.fromisoformat(start_time_input)
             except ValueError:
-                print(f"{Colors.ERROR}Invalid date format. Please use YYYY-MM-DDTHH:MM")
+                print(f"Invalid date format. Please use YYYY-MM-DDTHH:MM")
                 sys.exit(1)
         else:
             start_time = existing_start_time
@@ -1173,15 +1157,15 @@ def main():
 
     # Handle end time
     if existing_end_time:
-        print(f"\n{Colors.INFO}End time: {Colors.HIGHLIGHT}{existing_end_time.strftime('%Y-%m-%dT%H:%M')}")
-        print(f"{Colors.INFO}(To keep, press ENTER. To set a new date, use the format YYYY-MM-DDTHH:MM):")
+        print(f"\nEnd time: {existing_end_time.strftime('%Y-%m-%dT%H:%M')}")
+        print(f"(To keep, press ENTER. To set a new date, use the format YYYY-MM-DDTHH:MM):")
         end_time_input = input().strip()
 
         if end_time_input:
             try:
                 end_time = datetime.fromisoformat(end_time_input)
             except ValueError:
-                print(f"{Colors.ERROR}Invalid date format. Please use YYYY-MM-DDTHH:MM")
+                print(f"Invalid date format. Please use YYYY-MM-DDTHH:MM")
                 sys.exit(1)
         else:
             end_time = existing_end_time
@@ -1203,7 +1187,7 @@ def main():
     # Add a friendly warning if dates are still too far ahead
     days_ahead = (start_time - datetime.now()).days
     if days_ahead > KOMOOT_MAX_DAYS_AHEAD:
-        print(f"\n{Colors.WARNING}⚠️  Note: Start date is {days_ahead} days in the future.")
+        print(f"\n⚠️  Note: Start date is {days_ahead} days in the future.")
         print(
             f"   Some services like Komoot may reject GPX files with dates more than {KOMOOT_MAX_DAYS_AHEAD} days ahead."
         )
@@ -1213,13 +1197,13 @@ def main():
     walking_speed = WALKING_SPEED_KMH
     walking_hours_needed = total_distance / walking_speed
 
-    print(f"\n{Colors.INFO}Total time available: {Colors.HIGHLIGHT}{total_hours:.1f} hours")
+    print(f"\nTotal time available: {total_hours:.1f} hours")
     print(
-        f"{Colors.INFO}Walking time needed at {walking_speed} km/h: {Colors.HIGHLIGHT}{walking_hours_needed:.1f} hours"
+        f"Walking time needed at {walking_speed} km/h: {walking_hours_needed:.1f} hours"
     )
 
     if walking_hours_needed > total_hours:
-        print(f"\n{Colors.ERROR}Warning: Not enough time to complete the hike at the specified speed!")
+        print(f"\nWarning: Not enough time to complete the hike at the specified speed!")
         return
 
     # Calculate number of days and nights (needed for both existing and new overnight stops)
@@ -1261,7 +1245,7 @@ def main():
     user_kept_existing_stops = False
     if existing_stop_indices:
         print(
-            f"\n{Colors.INFO}Detected {Colors.HIGHLIGHT}{len(existing_stop_indices)}{Colors.RESET} existing overnight stop(s) in the GPX file."
+            f"\nDetected {len(existing_stop_indices)} existing overnight stop(s) in the GPX file."
         )
 
         # Convert indices to sleep_stops format
@@ -1281,7 +1265,7 @@ def main():
         )
 
         # Ask if user wants to keep or recalculate
-        print(f"\n{Colors.INFO}Would you like to keep these overnight locations?")
+        print(f"\nWould you like to keep these overnight locations?")
         keep_existing = (
             input("Press ENTER to keep or type 'yes' to recalculate: ").strip().lower()
         )
@@ -1289,14 +1273,14 @@ def main():
         if keep_existing == "yes":
             # Recalculate overnight stops
             if num_nights <= 0:
-                print(f"\n{Colors.INFO}This is a day hike - no overnight stops needed.")
+                print(f"\nThis is a day hike - no overnight stops needed.")
                 sleep_stops = []
             else:
-                print(f"\n{Colors.INFO}Recalculating for {num_nights} nights...")
+                print(f"\nRecalculating for {num_nights} nights...")
 
                 # Calculate daily distance
                 daily_distance = total_distance / num_days
-                print(f"{Colors.INFO}Average daily distance: {Colors.HIGHLIGHT}{daily_distance:.2f} km")
+                print(f"Average daily distance: {daily_distance:.2f} km")
 
                 # Find sleep-over locations
                 sleep_stops = []
@@ -1321,14 +1305,14 @@ def main():
     else:
         # No existing stops detected, calculate as before
         if num_nights <= 0:
-            print(f"\n{Colors.INFO}This is a day hike - no overnight stops needed.")
+            print(f"\nThis is a day hike - no overnight stops needed.")
             sleep_stops = []
         else:
-            print(f"\n{Colors.INFO}Number of nights: {Colors.HIGHLIGHT}{num_nights}")
+            print(f"\nNumber of nights: {num_nights}")
 
             # Calculate daily distance
             daily_distance = total_distance / num_days
-            print(f"{Colors.INFO}Average daily distance: {Colors.HIGHLIGHT}{daily_distance:.2f} km")
+            print(f"Average daily distance: {daily_distance:.2f} km")
 
             # Find sleep-over locations
             sleep_stops = []
@@ -1350,7 +1334,7 @@ def main():
 
     # Allow user to adjust sleep-over locations (only for newly calculated stops)
     if sleep_stops and not user_kept_existing_stops:
-        print(f"\n{Colors.INFO}Would you like to adjust any sleep-over locations?")
+        print(f"\nWould you like to adjust any sleep-over locations?")
         adjust = (
             input("Press ENTER to continue or type 'yes' to adjust: ").strip().lower()
         )
@@ -1358,7 +1342,7 @@ def main():
         if adjust == "yes":
             for stop in sleep_stops:
                 print(
-                    f"\n{Colors.HIGHLIGHT}Night {stop['night']}{Colors.RESET} - Current: {Colors.INFO}{stop['point']['coords'][0]:.6f}, {stop['point']['coords'][1]:.6f}"
+                    f"\nNight {stop['night']} - Current: {stop['point']['coords'][0]:.6f}, {stop['point']['coords'][1]:.6f}"
                 )
                 new_coords = input(
                     "Press ENTER to keep current coordinates or type new coordinates (lat,lon): "
@@ -1379,14 +1363,14 @@ def main():
 
                         stop["point"] = closest_point
                         print(
-                            f"  {Colors.SUCCESS}Adjusted to nearest track point: {closest_point['coords'][0]:.6f}, {closest_point['coords'][1]:.6f}"
+                            f"  Adjusted to nearest track point: {closest_point['coords'][0]:.6f}, {closest_point['coords'][1]:.6f}"
                         )
-                        print(f"  {Colors.INFO}Distance from input: {min_dist*1000:.0f} meters")
+                        print(f"  Distance from input: {min_dist*1000:.0f} meters")
                     except ValueError as e:
-                        print(f"  {Colors.ERROR}Invalid input: {e}")
+                        print(f"  Invalid input: {e}")
                     except Exception:
                         print(
-                            f"  {Colors.ERROR}Error processing coordinates - keeping original location"
+                            f"  Error processing coordinates - keeping original location"
                         )
 
     # Extract route name from GPX metadata if available
@@ -1401,16 +1385,16 @@ def main():
     # Validate the route before saving
     warnings = validate_gpx_data(all_points, sleep_stops, total_distance)
     if warnings:
-        print(f"\n{Colors.WARNING}⚠️  Route validation warnings:")
+        print(f"\n⚠️  Route validation warnings:")
         for warning in warnings:
-            print(f"   {Colors.WARNING}- {warning}")
-        proceed = input(f"\n{Colors.PROMPT}Do you want to continue anyway? (yes/no): {Colors.RESET}").strip().lower()
+            print(f"   - {warning}")
+        proceed = input(f"\nDo you want to continue anyway? (yes/no): ").strip().lower()
         if proceed != "yes":
-            print(f"{Colors.WARNING}Exiting without saving.")
+            print(f"Exiting without saving.")
             return
 
     # Create new GPX structure matching Komoot's format
-    print(f"\n{Colors.INFO}Creating GPX file...")
+    print(f"\nCreating GPX file...")
     new_root = create_komoot_compatible_gpx(
         all_points, sleep_stops, start_time, end_time, walking_speed, route_name
     )
@@ -1436,12 +1420,12 @@ def main():
     tree = ET.ElementTree(new_root)
     tree.write(output_file, xml_declaration=True, encoding="UTF-8", method="xml")
 
-    print(f"\n{Colors.SUCCESS}GPX route file saved as '{output_file}'")
+    print(f"\nGPX route file saved as '{output_file}'")
 
     # Add this new section here:
     # Ask if user wants to split into daily files
     if sleep_stops:  # Only offer this option for multi-day hikes
-        print(f"\n{Colors.INFO}Would you like to save each hiking day in a separate GPX file?")
+        print(f"\nWould you like to save each hiking day in a separate GPX file?")
         split_days = (
             input(
                 "Press ENTER to keep as one file or type 'yes' to split each day as a file: "
@@ -1454,7 +1438,7 @@ def main():
             # Extract base filename without extension
             base_filename = os.path.splitext(output_file)[0]
 
-            print(f"\n{Colors.INFO}Creating daily GPX files...")
+            print(f"\nCreating daily GPX files...")
             daily_files = create_daily_gpx_files(
                 all_points,
                 sleep_stops,
@@ -1465,26 +1449,26 @@ def main():
                 base_filename,
             )
 
-            print(f"\n{Colors.SUCCESS}Created {len(daily_files)} daily GPX files:")
+            print(f"\nCreated {len(daily_files)} daily GPX files:")
             for day_file in daily_files:
                 print(
-                    f"{Colors.SUCCESS}- Day {day_file['day']}: {day_file['filename']} ({day_file['distance']:.1f} km, {day_file['points']} points)"
+                    f"- Day {day_file['day']}: {day_file['filename']} ({day_file['distance']:.1f} km, {day_file['points']} points)"
                 )
 
     # Continue with the rest of the function...
-    print(f"\n{Colors.INFO}Total hiking days: {Colors.HIGHLIGHT}{num_days}")
-    print(f"{Colors.INFO}Average daily distance: {Colors.HIGHLIGHT}{total_distance/num_days:.2f} km")
+    print(f"\nTotal hiking days: {num_days}")
+    print(f"Average daily distance: {total_distance/num_days:.2f} km")
     print(
-        f"{Colors.INFO}Average daily hiking time: {Colors.HIGHLIGHT}{(total_distance/num_days)/walking_speed:.1f} hours"
+        f"Average daily hiking time: {(total_distance/num_days)/walking_speed:.1f} hours"
     )
 
     # Show final summary with sleep stops
     if sleep_stops:
-        print(f"\n{Colors.BOLD}Final itinerary:")
-        print(f"{Colors.INFO}Day 1: Start at {Colors.HIGHLIGHT}{start_time.strftime('%Y-%m-%d %H:%M')}")
+        print(f"\nFinal itinerary:")
+        print(f"Day 1: Start at {start_time.strftime('%Y-%m-%d %H:%M')}")
         day1_dist = sleep_stops[0]["point"]["cumulative_distance"]
         print(
-            f"  {Colors.SUCCESS}→ Walk {day1_dist:.1f} km to overnight stop at {sleep_stops[0]['point']['coords'][0]:.6f}, {sleep_stops[0]['point']['coords'][1]:.6f}"
+            f"  → Walk {day1_dist:.1f} km to overnight stop at {sleep_stops[0]['point']['coords'][0]:.6f}, {sleep_stops[0]['point']['coords'][1]:.6f}"
         )
 
         for i in range(len(sleep_stops)):
@@ -1494,12 +1478,12 @@ def main():
                 day_start = (start_time + timedelta(days=i + 1)).replace(
                     hour=DEFAULT_START_HOUR, minute=0
                 )
-                print(f"{Colors.INFO}Day {day_num}: Start at {Colors.HIGHLIGHT}{day_start.strftime('%Y-%m-%d %H:%M')}")
+                print(f"Day {day_num}: Start at {day_start.strftime('%Y-%m-%d %H:%M')}")
                 prev_dist = sleep_stops[i]["point"]["cumulative_distance"]
                 next_dist = sleep_stops[i + 1]["point"]["cumulative_distance"]
                 day_dist = next_dist - prev_dist
                 print(
-                    f"  {Colors.SUCCESS}→ Walk {day_dist:.1f} km to overnight stop at {sleep_stops[i+1]['point']['coords'][0]:.6f}, {sleep_stops[i+1]['point']['coords'][1]:.6f}"
+                    f"  → Walk {day_dist:.1f} km to overnight stop at {sleep_stops[i+1]['point']['coords'][0]:.6f}, {sleep_stops[i+1]['point']['coords'][1]:.6f}"
                 )
             else:
                 # Last day - calculate start time based on end time
@@ -1509,10 +1493,10 @@ def main():
                 last_hours = last_dist / walking_speed
                 last_day_start = end_time - timedelta(hours=last_hours)
                 print(
-                    f"{Colors.INFO}Day {day_num}: Start at {Colors.HIGHLIGHT}{last_day_start.strftime('%Y-%m-%d %H:%M')}"
+                    f"Day {day_num}: Start at {last_day_start.strftime('%Y-%m-%d %H:%M')}"
                 )
-                print(f"  {Colors.SUCCESS}→ Walk {last_dist:.1f} km to finish")
-                print(f"\n{Colors.SUCCESS}Arrive at {Colors.HIGHLIGHT}{end_time.strftime('%Y-%m-%d %H:%M')}")
+                print(f"  → Walk {last_dist:.1f} km to finish")
+                print(f"\nArrive at {end_time.strftime('%Y-%m-%d %H:%M')}")
 
     # Save markdown itinerary
     md_filename = os.path.splitext(output_file)[0] + ".md"
@@ -1546,17 +1530,17 @@ def main():
         route_name,
     )
 
-    print(f"\n{Colors.BOLD}Files created:")
-    print(f"{Colors.SUCCESS}- GPX file: {Colors.HIGHLIGHT}{output_file}")
+    print(f"\nFiles created:")
+    print(f"- GPX file: {output_file}")
 
     # Add daily files to the summary if they exist
     if "daily_files" in locals() and daily_files:
         for day_file in daily_files:
-            print(f"{Colors.SUCCESS}- Day {day_file['day']} GPX: {Colors.HIGHLIGHT}{day_file['filename']}")
+            print(f"- Day {day_file['day']} GPX: {day_file['filename']}")
 
-    print(f"{Colors.SUCCESS}- Markdown itinerary: {Colors.HIGHLIGHT}{md_filename}")
-    print(f"{Colors.SUCCESS}- KML file: {Colors.HIGHLIGHT}{kml_filename}")
-    print(f"{Colors.SUCCESS}- PNG image: {Colors.HIGHLIGHT}{png_filename}")
+    print(f"- Markdown itinerary: {md_filename}")
+    print(f"- KML file: {kml_filename}")
+    print(f"- PNG image: {png_filename}")
 
 
 if __name__ == "__main__":
