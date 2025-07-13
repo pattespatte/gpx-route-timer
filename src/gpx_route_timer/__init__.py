@@ -1069,8 +1069,9 @@ def validate_gpx_data(all_points, sleep_stops, total_distance):
 
 
 def save_route_image(filename, all_points, sleep_stops, route_name):
-    """Save a PNG image of the route using matplotlib"""
+    """Save a PNG image of the route using matplotlib with built-in compression"""
     import matplotlib.pyplot as plt
+    import os
 
     lats = [pt["coords"][0] for pt in all_points]
     lons = [pt["coords"][1] for pt in all_points]
@@ -1094,9 +1095,20 @@ def save_route_image(filename, all_points, sleep_stops, route_name):
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
-    plt.savefig(filename, dpi=150)
+    
+    # Save with maximum compression using matplotlib's built-in options
+    plt.savefig(
+        filename, 
+        dpi=100,
+        pil_kwargs={
+            'compress_level': 9,  # Maximum compression (0-9)
+            'optimize': True      # Additional optimization pass
+        }
+    )
     plt.close()
-    print(f"PNG image saved as '{filename}'")
+    
+    file_size = os.path.getsize(filename) / 1024  # Size in KB
+    print(f"PNG image saved as '{filename}' ({file_size:.1f} KB, compressed)")
 
 
 def main():
