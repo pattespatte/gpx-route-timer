@@ -833,11 +833,49 @@ def save_markdown_itinerary(
     print(f"Markdown file saved as '{filename}'")
 
 
+def calculate_heading(lat1, lon1, lat2, lon2):
+    """Calculate bearing between two points"""
+    import math
+
+    dlon = math.radians(lon2 - lon1)
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+
+    y = math.sin(dlon) * math.cos(lat2_rad)
+    x = math.cos(lat1_rad) * math.sin(lat2_rad) - math.sin(lat1_rad) * math.cos(
+        lat2_rad
+    ) * math.cos(dlon)
+
+    bearing = math.degrees(math.atan2(y, x))
+    return (bearing + 360) % 360
+
+
+def sample_path_points(all_points, interval_km=2.5):
+    """Sample points along the path at regular intervals"""
+    sampled = [all_points[0]]  # Always include start
+    last_sampled_distance = 0
+
+    for point in all_points[1:]:
+        distance_from_last = point["cumulative_distance"] - last_sampled_distance
+
+        if distance_from_last >= interval_km:
+            sampled.append(point)
+            last_sampled_distance = point["cumulative_distance"]
+
+    # Always include end point if not already included
+    if sampled[-1] != all_points[-1]:
+        sampled.append(all_points[-1])
+
+    return sampled
+
+
 def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end_time):
     """Save the route as a KML file with flythrough tour"""
     kml_content = []
     kml_content.append('<?xml version="1.0" encoding="UTF-8"?>')
-    kml_content.append('<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">')
+    kml_content.append(
+        '<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">'
+    )
     kml_content.append("  <Document>")
     kml_content.append(f"    <name>{route_name}</name>")
     kml_content.append(
@@ -873,84 +911,145 @@ def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end
     kml_content.append("      </IconStyle>")
     kml_content.append("    </Style>")
 
+    # Sample points along the path for smooth flythrough
+    # Use 2.5km intervals for ~40 waypoints on a 100km route
+    sampled_points = sample_path_points(all_points, interval_km=2.5)
+
+    # Add sleep stops to sampled points at appropriate positions
+    tour_waypoints = []
+    sleep_stop_indices = []
+
+    # Build tour waypoints list with proper ordering
+    current_sleep_idx = 0
+
+    for i, point in enumerate(sampled_points):
+        # Check if we should insert a sleep stop before this point
+        while current_sleep_idx < len(sleep_stops):
+            sleep_point = sleep_stops[current_sleep_idx]["point"]
+            if sleep_point["cumulative_distance"] <= point["cumulative_distance"]:
+                # Add sleep stop if it's not already in the list
+                if not tour_waypoints or tour_waypoints[-1]["point"] != sleep_point:
+                    tour_waypoints.append(
+                        {
+                            "point": sleep_point,
+                            "type": "sleep",
+                            "night": sleep_stops[current_sleep_idx]["night"],
+                        }
+                    )
+                    sleep_stop_indices.append(len(tour_waypoints) - 1)
+                current_sleep_idx += 1
+            else:
+                break
+
+        # Add the regular waypoint
+        waypoint_type = (
+            "start"
+            if i == 0
+            else ("end" if i == len(sampled_points) - 1 else "waypoint")
+        )
+        tour_waypoints.append({"point": point, "type": waypoint_type})
+
     # Add tour for flythrough
-    kml_content.append('    <gx:Tour>')
-    kml_content.append('      <name>Hike Flythrough</name>')
-    kml_content.append('      <description>Animated flythrough of the hiking route</description>')
-    kml_content.append('      <gx:Playlist>')
+    kml_content.append("    <gx:Tour>")
+    kml_content.append("      <name>Hike Flythrough</name>")
+    kml_content.append(
+        "      <description>Automated tour following hiking path</description>"
+    )
+    kml_content.append("      <gx:Playlist>")
 
-    # Create flythrough waypoints - use start, sleep stops, and end
-    tour_points = []
-    
-    # Add start point
-    start_lat, start_lon = all_points[0]["coords"]
-    tour_points.append((start_lon, start_lat, "Start"))
-    
-    # Add sleep stops
-    for i, stop in enumerate(sleep_stops):
-        lat, lon = stop["point"]["coords"]
-        tour_points.append((lon, lat, f"Night {i+1} Camp"))
-    
-    # Add end point
-    end_lat, end_lon = all_points[-1]["coords"]
-    tour_points.append((end_lon, end_lat, "Finish"))
+    # Create FlyTo elements for each waypoint
+    for i, waypoint in enumerate(tour_waypoints):
+        point = waypoint["point"]
+        lat, lon = point["coords"]
 
-    # Create FlyTo elements for each tour point
-    for i, (lon, lat, name) in enumerate(tour_points):
-        # First point gets a longer duration to establish the view
-        duration = 8.0 if i == 0 else 5.0
-        
-        # Vary the viewing angle slightly for visual interest
-        tilt = 45 + (i * 5) % 30  # Varies between 45-75 degrees
-        range_distance = 800 if i == 0 else 600  # Start with wider view
-        
-        kml_content.append('        <gx:FlyTo>')
-        kml_content.append(f'          <gx:duration>{duration}</gx:duration>')
-        kml_content.append('          <gx:flyToMode>smooth</gx:flyToMode>')
-        kml_content.append('          <LookAt>')
-        kml_content.append(f'            <longitude>{lon}</longitude>')
-        kml_content.append(f'            <latitude>{lat}</latitude>')
-        kml_content.append('            <altitude>0</altitude>')
-        kml_content.append(f'            <range>{range_distance}</range>')
-        kml_content.append(f'            <tilt>{tilt}</tilt>')
-        kml_content.append(f'            <heading>{(i * 30) % 360}</heading>')  # Rotate view
-        kml_content.append('          </LookAt>')
-        kml_content.append('        </gx:FlyTo>')
-        
-        # Add a pause at each significant point
-        if i < len(tour_points) - 1:  # Don't pause at the last point
-            kml_content.append('        <gx:Wait>')
-            kml_content.append('          <gx:duration>2.0</gx:duration>')
-            kml_content.append('        </gx:Wait>')
+        # Calculate heading to look forward along the path
+        if i < len(tour_waypoints) - 1:
+            next_point = tour_waypoints[i + 1]["point"]
+            heading = calculate_heading(
+                lat, lon, next_point["coords"][0], next_point["coords"][1]
+            )
+            # Offset by 90 degrees to look perpendicular to the path
+            heading = (heading - 90) % 360
+        else:
+            heading = 0
 
-    # Add a final overview shot
-    # Calculate center point and bounding box for overview
+        # Determine duration based on distance to next waypoint
+        if i < len(tour_waypoints) - 1:
+            distance_to_next = abs(
+                tour_waypoints[i + 1]["point"]["cumulative_distance"]
+                - point["cumulative_distance"]
+            )
+            # 2-3 seconds per kilometer
+            duration = min(max(2.0, distance_to_next * 2.5), 8.0)
+        else:
+            duration = 5.0
+
+        # Special handling for different waypoint types
+        if waypoint["type"] == "start":
+            duration = 6.0
+            range_val = 1000
+            tilt = 65
+        elif waypoint["type"] == "end":
+            duration = 5.0
+            range_val = 1000
+            tilt = 65
+        elif waypoint["type"] == "sleep":
+            duration = 4.0
+            range_val = 800
+            tilt = 70
+        else:
+            range_val = 600 + (i % 3) * 100  # Vary between 600-800m
+            tilt = 60 + (i % 4) * 3  # Vary between 60-69 degrees
+
+        kml_content.append("        <gx:FlyTo>")
+        kml_content.append(f"          <gx:duration>{duration:.1f}</gx:duration>")
+        kml_content.append("          <gx:flyToMode>smooth</gx:flyToMode>")
+        kml_content.append("          <LookAt>")
+        kml_content.append(f"            <longitude>{lon}</longitude>")
+        kml_content.append(f"            <latitude>{lat}</latitude>")
+        kml_content.append("            <altitude>0</altitude>")
+        kml_content.append(f"            <range>{range_val}</range>")
+        kml_content.append(f"            <tilt>{tilt}</tilt>")
+        kml_content.append(f"            <heading>{heading:.0f}</heading>")
+        kml_content.append("          </LookAt>")
+        kml_content.append("        </gx:FlyTo>")
+
+        # Add pause at special points
+        if waypoint["type"] in ["start", "sleep", "end"]:
+            pause_duration = 3.0 if waypoint["type"] == "sleep" else 2.0
+            kml_content.append("        <gx:Wait>")
+            kml_content.append(f"          <gx:duration>{pause_duration}</gx:duration>")
+            kml_content.append("        </gx:Wait>")
+
+    # Add final overview shot
     all_lats = [pt["coords"][0] for pt in all_points]
     all_lons = [pt["coords"][1] for pt in all_points]
     center_lat = (min(all_lats) + max(all_lats)) / 2
     center_lon = (min(all_lons) + max(all_lons)) / 2
-    
+
     # Calculate range based on route extent
     lat_range = max(all_lats) - min(all_lats)
     lon_range = max(all_lons) - min(all_lons)
-    overview_range = max(lat_range, lon_range) * 111000 * 1.5  # Convert to meters and add margin
-    overview_range = max(overview_range, 2000)  # Minimum 2km range
-    
-    kml_content.append('        <gx:FlyTo>')
-    kml_content.append('          <gx:duration>6.0</gx:duration>')
-    kml_content.append('          <gx:flyToMode>smooth</gx:flyToMode>')
-    kml_content.append('          <LookAt>')
-    kml_content.append(f'            <longitude>{center_lon}</longitude>')
-    kml_content.append(f'            <latitude>{center_lat}</latitude>')
-    kml_content.append('            <altitude>0</altitude>')
-    kml_content.append(f'            <range>{overview_range}</range>')
-    kml_content.append('            <tilt>0</tilt>')
-    kml_content.append('            <heading>0</heading>')
-    kml_content.append('          </LookAt>')
-    kml_content.append('        </gx:FlyTo>')
+    overview_range = (
+        max(lat_range, lon_range) * 111000 * 1.5
+    )  # Convert to meters and add margin
+    overview_range = max(overview_range, 5000)  # Minimum 5km range
 
-    kml_content.append('      </gx:Playlist>')
-    kml_content.append('    </gx:Tour>')
+    kml_content.append("        <gx:FlyTo>")
+    kml_content.append("          <gx:duration>8.0</gx:duration>")
+    kml_content.append("          <gx:flyToMode>smooth</gx:flyToMode>")
+    kml_content.append("          <LookAt>")
+    kml_content.append(f"            <longitude>{center_lon}</longitude>")
+    kml_content.append(f"            <latitude>{center_lat}</latitude>")
+    kml_content.append("            <altitude>0</altitude>")
+    kml_content.append(f"            <range>{overview_range:.0f}</range>")
+    kml_content.append("            <tilt>0</tilt>")
+    kml_content.append("            <heading>0</heading>")
+    kml_content.append("          </LookAt>")
+    kml_content.append("        </gx:FlyTo>")
+
+    kml_content.append("      </gx:Playlist>")
+    kml_content.append("    </gx:Tour>")
 
     # Add route line
     kml_content.append("    <Placemark>")
@@ -1017,7 +1116,16 @@ def save_kml_file(filename, all_points, sleep_stops, route_name, start_time, end
     with open(filename, "w", encoding="utf-8") as f:
         f.write("\n".join(kml_content))
 
+    # Calculate and display tour statistics
+    num_waypoints = len(tour_waypoints)
     print(f"KML file saved as '{filename}'")
+    print(f"  - Tour includes {num_waypoints} waypoints (sampled every ~2.5 km)")
+    print(f"  - Smooth flythrough follows the actual hiking path")
+    print(f"  - Duration varies based on distance between waypoints")
+
+
+# Also add the import for math at the top of your script if not already present
+import math
 
 
 def validate_gpx_data(all_points, sleep_stops, total_distance):
@@ -1063,7 +1171,9 @@ def validate_gpx_data(all_points, sleep_stops, total_distance):
 
     duplicate_coords = sum(1 for count in coord_counts.values() if count > 1)
     if duplicate_coords > len(all_points) * 0.1:  # More than 10% duplicates
-        warnings.append(f"High number of duplicate coordinates detected: {duplicate_coords}")
+        warnings.append(
+            f"High number of duplicate coordinates detected: {duplicate_coords}"
+        )
 
     return warnings
 
@@ -1095,18 +1205,18 @@ def save_route_image(filename, all_points, sleep_stops, route_name):
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
-    
+
     # Save with maximum compression using matplotlib's built-in options
     plt.savefig(
-        filename, 
+        filename,
         dpi=100,
         pil_kwargs={
-            'compress_level': 9,  # Maximum compression (0-9)
-            'optimize': True      # Additional optimization pass
-        }
+            "compress_level": 9,  # Maximum compression (0-9)
+            "optimize": True,  # Additional optimization pass
+        },
     )
     plt.close()
-    
+
     file_size = os.path.getsize(filename) / 1024  # Size in KB
     print(f"PNG image saved as '{filename}' ({file_size:.1f} KB, compressed)")
 
@@ -1151,8 +1261,12 @@ def main():
     # Handle different GPX types
     if gpx_type == "waypoint":
         print(f"Found {len(elements)} waypoints in the GPX file.")
-        print(f"The input GPX does not contain a route or track, only individual waypoints.")
-        print(f"These waypoints can be converted into a planned route by connecting them in order.")
+        print(
+            f"The input GPX does not contain a route or track, only individual waypoints."
+        )
+        print(
+            f"These waypoints can be converted into a planned route by connecting them in order."
+        )
 
         convert = input(f"Convert waypoints to a route? (yes/no): ").strip().lower()
         if convert != "yes":
@@ -1164,7 +1278,9 @@ def main():
 
     elif gpx_type == "track":
         print(f"Found recorded track data in the GPX file.")
-        print(f"The input contains a recorded path (track). It will be converted into a planned route.")
+        print(
+            f"The input contains a recorded path (track). It will be converted into a planned route."
+        )
 
         all_points = extract_points_from_tracks(elements)
         print(f"Converting {len(all_points)} track points to a planned route...")
@@ -1220,7 +1336,9 @@ def main():
     # Handle start time
     if existing_start_time:
         print(f"\nStart time: {existing_start_time.strftime('%Y-%m-%dT%H:%M')}")
-        print(f"(To keep, press ENTER. To set a new date, use the format YYYY-MM-DDTHH:MM):")
+        print(
+            f"(To keep, press ENTER. To set a new date, use the format YYYY-MM-DDTHH:MM):"
+        )
         start_time_input = input().strip()
 
         if start_time_input:
@@ -1249,7 +1367,9 @@ def main():
     # Handle end time
     if existing_end_time:
         print(f"\nEnd time: {existing_end_time.strftime('%Y-%m-%dT%H:%M')}")
-        print(f"(To keep, press ENTER. To set a new date, use the format YYYY-MM-DDTHH:MM):")
+        print(
+            f"(To keep, press ENTER. To set a new date, use the format YYYY-MM-DDTHH:MM):"
+        )
         end_time_input = input().strip()
 
         if end_time_input:
@@ -1294,7 +1414,9 @@ def main():
     )
 
     if walking_hours_needed > total_hours:
-        print(f"\nWarning: Not enough time to complete the hike at the specified speed!")
+        print(
+            f"\nWarning: Not enough time to complete the hike at the specified speed!"
+        )
         return
 
     # Calculate number of days and nights (needed for both existing and new overnight stops)
