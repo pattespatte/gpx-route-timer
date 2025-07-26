@@ -695,6 +695,45 @@ def indent_xml(elem, level=0):
             elem.tail = i
 
 
+def create_google_earth_url(all_points):
+    """Create a Google Earth Web URL with camera positioned to show the entire route"""
+    # Calculate center point and bounding box
+    all_lats = [pt["coords"][0] for pt in all_points]
+    all_lons = [pt["coords"][1] for pt in all_points]
+    center_lat = (min(all_lats) + max(all_lats)) / 2
+    center_lon = (min(all_lons) + max(all_lons)) / 2
+
+    # Calculate the extent of the route
+    lat_range = max(all_lats) - min(all_lats)
+    lon_range = max(all_lons) - min(all_lons)
+
+    # Calculate altitude (camera distance) based on route extent
+    # This is an approximation - adjust multiplier as needed
+    max_extent = max(lat_range, lon_range)
+    altitude = max_extent * 111000 * 2.5  # Convert degrees to meters and add margin
+    altitude = max(altitude, 10000)  # Minimum 10km altitude
+    altitude = min(altitude, 500000)  # Maximum 500km altitude
+
+    # Google Earth URL format:
+    # https://earth.google.com/web/@{lat},{lon},{elevation}a,{altitude}d,{y_rotation}y,{heading}h,{tilt}t,{roll}r
+    # Where:
+    # - lat,lon: camera position
+    # - elevation: ground elevation (we'll use 0)
+    # - altitude: camera altitude in meters with 'd' suffix
+    # - y_rotation: 35y seems standard
+    # - heading: compass heading (0 = north)
+    # - tilt: camera tilt (0 = looking straight down, 90 = horizontal)
+    # - roll: camera roll (usually 0)
+
+    url = (
+        f"https://earth.google.com/web/"
+        f"@{center_lat:.8f},{center_lon:.8f},0a,"
+        f"{altitude:.2f}d,35y,0h,0t,0r"
+    )
+
+    return url
+
+
 def save_markdown_itinerary(
     filename,
     start_time,
@@ -813,15 +852,24 @@ def save_markdown_itinerary(
 
     md_content.append(f"\n## 3D Visualization\n")
     md_content.append(f"To view this route in 3D:")
+
+    # Create direct Google Earth link
+    earth_url = create_google_earth_url(all_points)
     md_content.append(
-        f"- **Google Earth Web**: Go to [earth.google.com](https://earth.google.com/web/), click the menu (☰), select 'Projects' → 'Import KML file', and upload the `.kml` file"
+        f"- **Google Earth Web**: [Open map in Google Earth]({earth_url})"
     )
+    md_content.append(
+        f"- **Import KML**: For the full tour experience with flythrough, go to [earth.google.com](https://earth.google.com/web/), "
+        f"click the menu (☰), select 'Projects' → 'Import KML file', and upload the `.kml` file"
+    )
+
     md_content.append(
         f"- **Google Earth Desktop**: Double-click the `.kml` file (requires Google Earth to be installed)"
     )
     md_content.append(
         f"- **Mobile**: Import the `.kml` file through the Google Earth mobile app"
     )
+
     # Add image if it exists
     image_filename = os.path.splitext(filename)[0] + ".png"
     md_content.append(f"![Route map]({os.path.basename(image_filename)})\n")
